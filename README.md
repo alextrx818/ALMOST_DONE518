@@ -35,20 +35,20 @@ This script:
 
 This project implements a comprehensive standardized logging system. All logging operations must follow these standards:
 
-### 1. Use Factory Methods for Logger Creation
+### 1. Use Centralized Logging Configuration
 
-All loggers must be created using the factory methods from `log_config.py`:
+All loggers must be created using the standard logging module, with configuration centralized in `log_config.py`:
 
 ```python
-# line 37-38: Import the factory method
-from log_config import get_logger
+# line 37-38: Import the standard logging module
+import logging
 
 # line 40-41: Create a standardized logger
-logger = get_logger("module_name")
+logger = logging.getLogger("module_name")
 
-# line 43-44: For summary loggers, use the specialized factory
-from log_config import get_summary_logger
-summary_logger = get_summary_logger("pipeline")
+# line 43-44: For summary loggers, use the static configuration
+import logging
+logger = logging.getLogger("summary.pipeline")
 ```
 
 ### 2. Prohibited Practices
@@ -56,10 +56,6 @@ summary_logger = get_summary_logger("pipeline")
 The following logging practices are strictly prohibited and will be caught by the pre-commit hook:
 
 ```python
-# ❌ PROHIBITED: Direct logger creation
-import logging
-logger = get_logger("module_name")  # Will fail validation
-
 # ❌ PROHIBITED: Custom formatter creation
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")  # Will fail validation
 
@@ -106,5 +102,3 @@ For more detailed information, see the [LOGGING_SYSTEM_RULES.md](LOGGING_SYSTEM_
 
 ## Project Overview
 The Football Match Tracking System is designed to monitor live football matches, process match data, generate human-readable summaries, and send alerts based on specific match conditions.
-
-(…rest of your documentation…)
