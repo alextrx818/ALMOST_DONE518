@@ -596,3 +596,336 @@ Added expected loggers to the list
 Removed premature return in the validation function
 These changes collectively solved the logging configuration issues and significantly improved the pipeline performance from 412.07 seconds to 170.79 seconds (58.6% reduction in execution time).
 
+/root/Complete_Seperate/verify_logging.sh
+[text](verify_logging.sh)
+
+But if you’d rather have it in Python, here’s a drop-in equivalent:
+
+#!/usr/bin/env python3
+import subprocess, sys, shutil, time
+
+def run(cmd, check=True, capture=False, **kwargs):
+    """Helper to run a shell command."""
+    print(f"$ {cmd}")
+    result = subprocess.run(cmd, shell=True, check=check,
+                            stdout=(subprocess.PIPE if capture else None),
+                            stderr=(subprocess.STDOUT if capture else None),
+                            **kwargs)
+    if capture:
+        return result.stdout.decode()
+    return None
+
+def check_syntax():
+    print("\n1. Syntax & Basic Imports")
+    try:
+        run("python3 -m py_compile log_config.py")
+        print(" ✅ log_config.py compiles")
+    except subprocess.CalledProcessError:
+        print(" ❌ log_config.py syntax error")
+    try:
+        run("python3 -m py_compile orchestrate_complete.py")
+        print(" ✅ orchestrate_complete.py compiles")
+    except subprocess.CalledProcessError:
+        print(" ❌ orchestrate_complete.py syntax error")
+    out = run(
+        "python3 - <<'PY'\nimport log_config, orchestrate_complete\nprint('✅ modules import OK')\nPY",
+        capture=True, check=False
+    )
+    sys.stdout.write(f" → {out}")
+
+def check_static_config():
+    print("\n2. Static Logging Config in log_config.py")
+    # 2.1 No legacy helpers
+    for pattern, desc in [("def get_summary_logger", "get_summary_logger gone"),
+                          ("class StepTimestampFilter", "StepTimestampFilter gone")]:
+        res = subprocess.run(f"grep -RIn '{pattern}' log_config.py", shell=True)
+        print(f"  ✔ {desc}" if res.returncode else f"  ❌ legacy {pattern} found")
+    # 2.2 PrependFileHandler & TZ
+    for pattern, desc in [("^class PrependFileHandler", "PrependFileHandler present"),
+                          ("Formatter.converter", "Formatter.converter → eastern_time_converter")]:
+        res = subprocess.run(f"grep -RIn '{pattern}' log_config.py", shell=True)
+        print(f"  ✔ {desc}" if res.returncode == 0 else f"  ❌ {desc} missing")
+    # 2.3 Formatters
+    fmt_block = run("grep -RIn '\"formatters\"' -A5 log_config.py | grep -E '\"standard\"|\"detailed\"|\"simple\"'", capture=True, check=False)
+    print("  ✔ standard,detailed,simple present" if fmt_block else "  ❌ missing standard/detailed/simple")
+    # 2.4 Handlers
+    h_block = run("grep -RIn '\"handlers\"' -A12 log_config.py | grep -E '\"console\"|\"orchestrator_file\"|\"match_summary_file\"|\"summary_json_file\"'", capture=True, check=False)
+    print("  ✔ handlers block OK" if h_block else "  ❌ missing one of console/orchestrator_file/match_summary_file/summary_json_file")
+    # match_summary_file details
+    msf = run("sed -n '/\"match_summary_file\"/,/\"backupCount\"/p' log_config.py", capture=True, check=False)
+    ok = ("pipeline.log" in msf and "simple" in msf)
+    print("    ✔ match_summary_file→pipeline.log + simple" if ok else "    ❌ match_summary_file misconfigured")
+    # summary_json_file
+    sjf = run("grep -RIn '\"summary_json_file\"' -A5 log_config.py", capture=True, check=False)
+    print("    ✔ summary_json_file → summary_json.logger" if "summary_json.logger" in sjf else "    ❌ summary_json_file missing/misnamed")
+
+def check_loggers_block():
+    print("\n2.5 Loggers block")
+    lb = run("grep -RIn '\"loggers\"' -A20 log_config.py | grep -E '\"orchestrator\"|\"summary\\.pipeline\"|\"summary\\.orchestration\"|\"summary_json\"'", capture=True, check=False)
+    print("  ✔ core loggers present" if lb else "  ❌ missing one of orchestrator/summary.pipeline/summary.orchestration/summary_json")
+
+def check_validation_logic():
+    print("\n3. Validation Logic Changes")
+    # IGNORE_PREFIXES
+    ip = run("grep -RIn IGNORE_PREFIXES -A5 log_config.py", capture=True, check=False)
+    ok = "concurrent.futures" in ip and "multiprocessing" in ip
+    print(f"  ✔ IGNORE_PREFIXES updated" if ok else "  ❌ IGNORE_PREFIXES missing new entries")
+    # SUMMARY_PREFIX exemption
+    res = subprocess.run("grep -RIn 'or name.startswith.*SUMMARY_PREFIX' log_config.py", shell=True)
+    print("  ✔ summary loggers exempted" if res.returncode==0 else "  ❌ exemption missing")
+    # EXPECTED_LOGGERS
+    el = run("grep -RIn EXPECTED_LOGGERS -A5 log_config.py", capture=True, check=False)
+    ok = "summary_json" in el and "logger_monitor" in el
+    print("  ✔ EXPECTED_LOGGERS updated" if ok else "  ❌ EXPECTED_LOGGERS missing entries")
+    # premature return
+    res = subprocess.run("grep -RIn 'return True' -n log_config.py | grep -B2 'check handler count'", shell=True)
+    print("  ❌ stray return True found" if res.returncode==0 else "  ✔ no premature return")
+
+def check_orchestrator_changes():
+    print("\n4. Orchestrator Code Changes")
+    # no get_summary_logger
+    res = subprocess.run("grep -RIn get_summary_logger orchestrate_complete.py", shell=True)
+    print("  ❌ legacy get_summary_logger still present" if res.returncode==0 else "  ✔ no get_summary_logger import")
+    # get_eastern_timestamp
+    res = subprocess.run("grep -RIn 'def get_eastern_timestamp' orchestrate_complete.py", shell=True)
+    print("  ✔ get_eastern_timestamp() present" if res.returncode==0 else "  ❌ get_eastern_timestamp() missing")
+    # STEP & complete
+    cmds = [
+      "grep -RIn 'summary_logger.info.*STEP 1: JSON fetch:' orchestrate_complete.py",
+      "grep -RIn 'STEP 2: Merge and enrichment:' orchestrate_complete.py",
+      "grep -RIn '✅ Pipeline completed in.*: {get_eastern_timestamp()}' orchestrate_complete.py"
+    ]
+    ok = all(subprocess.run(cmd, shell=True).returncode==0 for cmd in cmds)
+    print("  ✔ orchestration STEP/complete logging patched" if ok else "  ❌ orchestration STEP/complete logging not patched")
+
+def check_stray_factory():
+    print("\n5. Stray logging.getLogger() Checks")
+    out = run("grep -RIn logging.getLogger --include='*.py' . | grep -vE 'log_config.py|orchestrate_complete.py'", capture=True, check=False)
+    print("  ✔ no stray logging.getLogger() calls" if not out.strip() else f"  ❌ stray calls found:\n{out}")
+
+def smoke_run_and_validate():
+    print("\n6. Smoke-Run & Log-Output Validation")
+    # rotate
+    try: shutil.move("logs/summary/pipeline.log", "logs/summary/pipeline.log.bak")
+    except: pass
+    run("./run_pipeline.sh > run_output.log 2>&1 || true")
+    time.sleep(1)
+    print(" → head -n6 logs/summary/pipeline.log:")
+    print(run("head -n6 logs/summary/pipeline.log", capture=True, check=False) or "   (empty)")
+    iso = subprocess.run("grep -E '^[0-9]{4}-' logs/summary/pipeline.log", shell=True)
+    print(" → ISO dates in body: ❌ found" if iso.returncode==0 else " → ISO dates in body: ✅ none")
+
+def runtime_handler_formatter_check():
+    print("\n7. Runtime Handler & Formatter Check")
+    out = run(
+        "python3 - <<'PY'\n"
+        "import logging, log_config\n"
+        "log_config.configure_logging()\n"
+        "h = logging.getLogger('summary.pipeline').handlers\n"
+        "fmts = [x.formatter._fmt for x in h]\n"
+        "print(' Handlers:', [type(x).__name__ for x in h])\n"
+        "print(' Formats: ', fmts)\n"
+        "assert [type(x).__name__ for x in h] == ['PrependFileHandler']\n"
+        "assert fmts == ['%(message)s']\n"
+        "print(' ✅ runtime handlers & formatter OK')\n"
+        "PY",
+        capture=True, check=False
+    )
+    print(out)
+
+if __name__ == "__main__":
+    check_syntax   = check_syntax
+    check_syntax()
+    check_static_config()
+    check_loggers_block()
+    check_validation_logic()
+    check_orchestrator_changes()
+    check_stray_factory()
+    smoke_run_and_validate()
+    runtime_handler_formatter_check()
+    print("\n===============================================================")
+    print("  Audit complete — review any ❌ above!")
+    print("===============================================================")
+
+Usage:
+
+    Save as full_logging_audit.py
+
+    Make executable (optional, since the shebang is set):
+
+chmod +x full_logging_audit.py
+
+Run it:
+
+./full_logging_audit.py
+
+VERIFY LOGGING CONFIG:
+
+
+
+
+
+
+
+
+VERIFY LOGGING CONFIG:
+verify_logging_config.py
+
+import textwrap
+
+script = textwrap.dedent("""
+    #!/usr/bin/env python3
+    \"\"\"
+    verify_logging_config.py
+
+    This script performs a thorough, zero-touch audit of the centralized logging
+    configuration in log_config.py. It checks:
+
+      1. Static configuration:
+         - Formatter names and format strings
+         - Handler entries: class, filename, formatter
+         - Logger entries: handler lists
+
+      2. Live configuration:
+         - Instantiates logging via configure_logging()
+         - Retrieves each logger, inspects its handlers
+         - Ensures handler types and attached formatter strings match spec
+
+    Usage:
+      chmod +x verify_logging_config.py
+      ./verify_logging_config.py
+
+    Exits with code 0 if all checks pass, or prints failures and exits non-zero.
+    \"\"\"
+
+    import sys
+    import logging
+    import logging.config
+    import log_config
+
+    # Canonical constants from log_config
+    CANONICAL = log_config.CANONICAL_FORMAT
+    SIMPLE_FMT = log_config.SUMMARY_FORMAT
+
+    # 1. Static checks
+    cfg = log_config.LOGGING_CONFIG
+
+    failures = []
+
+    # 1.1 Formatters
+    expected_fmt = {
+        'standard': CANONICAL,
+        'detailed': CANONICAL,
+        'simple': SIMPLE_FMT
+    }
+    fm_keys = cfg.get('formatters', {}).keys()
+    for name, fmt in expected_fmt.items():
+        actual = cfg['formatters'].get(name, {}).get('format')
+        if actual != fmt:
+            failures.append(f"Formatter '{name}' format mismatch: expected {fmt!r}, got {actual!r}")
+
+    # 1.2 Handlers
+    expected_handlers = {
+        'console':       {'class': 'logging.StreamHandler', 'formatter': 'standard', 'filename': None},
+        'orchestrator_file': {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/orchestrator.log'},
+        'fetch_cache_file':  {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/pure_json_fetch.log'},
+        'fetch_data_file':   {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/fetch_data.log'},
+        'merge_logic_file':  {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/merge_logic.log'},
+        'memory_monitor_file': {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/memory_monitor.log'},
+        'logger_monitor_file': {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/logger_monitor.log'},
+        'alerts_file':       {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': 'logs/alert_discovery.log'},
+        'match_summary_file':{'class': 'log_config.PrependFileHandler', 'formatter': 'simple',   'filename': 'logs/summary/pipeline.log'},
+        'summary_file':      {'class': 'log_config.PrependFileHandler', 'formatter': 'simple',   'filename': 'logs/summary/pipeline.log'},
+        'summary_json_file': {'class': 'log_config.PrependFileHandler', 'formatter': 'standard', 'filename': str(log_config.LOGS_DIR/'summary'/'summary_json.logger')},
+    }
+    for hname, spec in expected_handlers.items():
+        entry = cfg['handlers'].get(hname)
+        if not entry:
+            failures.append(f"Handler '{hname}' missing")
+            continue
+        # class check
+        cls = entry.get('class')
+        if cls != spec['class']:
+            failures.append(f"Handler '{hname}' class mismatch: expected {spec['class']}, got {cls}")
+        # formatter check
+        fmt_name = entry.get('formatter')
+        if fmt_name != spec['formatter']:
+            failures.append(f"Handler '{hname}' formatter mismatch: expected {spec['formatter']}, got {fmt_name}")
+        # filename check
+        fn = entry.get('filename')
+        # convert both to str for comparison
+        if spec['filename'] is None:
+            if fn is not None:
+                failures.append(f"Handler '{hname}' should not have a filename, got {fn}")
+        else:
+            if os.path.normpath(fn) != os.path.normpath(spec['filename']):
+                failures.append(f"Handler '{hname}' filename mismatch: expected {spec['filename']}, got {fn}")
+
+    # 1.3 Loggers
+    expected_loggers = {
+        'root':           ['console'],
+        'orchestrator':   ['console','orchestrator_file'],
+        'pure_json_fetch':['console','fetch_cache_file'],
+        'fetch_data':     ['console','fetch_data_file'],
+        'merge_logic':    ['console','merge_logic_file'],
+        'memory_monitor': ['console','memory_monitor_file'],
+        'logger_monitor': ['console','logger_monitor_file'],
+        'alerter_main':   ['console','alerts_file'],
+        'summary.pipeline':     ['summary_file'],
+        'summary.orchestration':['match_summary_file'],
+        'summary_json':         ['console','summary_json_file'],
+    }
+    for lname, handlers in expected_loggers.items():
+        lcfg = cfg['loggers'].get(lname)
+        if not lcfg:
+            failures.append(f"Logger '{lname}' missing")
+            continue
+        actual = sorted(lcfg.get('handlers', []))
+        if sorted(handlers) != actual:
+            failures.append(f"Logger '{lname}' handlers mismatch: expected {handlers}, got {actual}")
+
+    # 2. Live checks
+    if not failures:
+        log_config.configure_logging()
+        for lname in expected_loggers:
+            logger = logging.getLogger(lname)
+            live_hnames = [type(h).__name__ for h in logger.handlers]
+            expected_types = []
+            for h in expected_loggers[lname]:
+                # map config name to class name
+                spec = expected_handlers.get(h)
+                if spec and 'PrependFileHandler' in spec['class']:
+                    expected_types.append('PrependFileHandler')
+                elif spec and spec['class']=='logging.StreamHandler':
+                    expected_types.append('StreamHandler')
+            if sorted(live_hnames) != sorted(expected_types):
+                failures.append(f"(live) Logger '{lname}' handler types mismatch: expected {expected_types}, got {live_hnames}")
+            # formatter string check
+            for h in logger.handlers:
+                fmt = h.formatter._fmt if hasattr(h.formatter, '_fmt') else None
+                # find expected fmt
+                if isinstance(h, logging.StreamHandler):
+                    exp = CANONICAL
+                else:
+                    # for file handlers, determine by name
+                    for hkey, spec in expected_handlers.items():
+                        if type(h).__name__ in spec['class']:
+                            exp = expected_fmt.get(spec['formatter'], None) if spec['formatter'] in expected_fmt else None
+                            break
+                    else:
+                        exp = None
+                if fmt != exp:
+                    failures.append(f"(live) Handler '{type(h).__name__}' on logger '{lname}' has fmt {fmt!r}, expected {exp!r}")
+
+    # Report
+    if failures:
+        print("✖ Verification failures:")
+        for msg in failures:
+            print("  -", msg)
+        sys.exit(1)
+    else:
+        print("✔ All static and live logging configuration checks passed.")
+        sys.exit(0)
+""")
+
+import ace_tools as tools; tools.display_dataframe_to_user("verify_logging_config.py", script)

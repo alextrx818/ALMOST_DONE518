@@ -32,7 +32,6 @@ All logging setup, configuration, and handlers should be defined here.
 
 Key Functions:
 - get_logger(name): Get a standard logger with the given name
-- get_summary_logger(): Get the special summary logger for match data
 - cleanup_handlers(): Clean up all logging handlers
 
 IMPORTANT: No other files should define their own loggers or handlers.
@@ -86,9 +85,8 @@ _logging_configured = False
 # line 52-53: Store the original getLogger function before monkey-patching
 _original_getLogger = logging.getLogger
 
-# Create a forward reference to our factory functions that will be defined later
+# Create a forward reference to our factory function that will be defined later
 _get_logger_func = None
-_get_summary_logger_func = None
 
 # Define get_logger function early to avoid circular references
 def get_logger(name):
@@ -111,8 +109,8 @@ def _central_getLogger(name=None):
     Returns:
         Logger instance configured with our standard handlers/formatters
     """
-    # If our factory functions haven't been defined yet, use original temporarily
-    if _get_logger_func is None or _get_summary_logger_func is None:
+    # If our factory function hasn't been defined yet, use original temporarily
+    if _get_logger_func is None:
         return _original_getLogger(name)
         
     # No special routing for summary.* loggers - they're now statically configured
@@ -507,7 +505,7 @@ def validate_logger_configuration():
     Returns True if validation passes, False otherwise.
     """
     # Skip validation during import to prevent circular references
-    if _get_logger_func is None or _get_summary_logger_func is None:
+    if _get_logger_func is None:
         return True
         
     validation_passed = True
@@ -933,10 +931,10 @@ class CentralLogger(logging.Logger):
 # Apply the runtime enforcement after all functions are defined
 # ============================================================================
 
-# line 1038-1042: Set global references to factory functions before monkey patching
-# This ensures that all functions are fully defined before we intercept any logging
+# line 1038-1042: Set global reference to factory function before monkey patching
+# This ensures that the function is fully defined before we intercept any logging
 _get_logger_func = get_logger
-_get_summary_logger_func = get_logger  # Point to regular logger function since we removed get_summary_logger
+# Legacy _get_summary_logger_func removed - factory function consolidated
 
 # line 1044-1045: Apply the monkey patch to intercept all direct logging.getLogger calls
 logging.getLogger = _central_getLogger

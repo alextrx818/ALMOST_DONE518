@@ -1,0 +1,38 @@
+SUMMARY PIPELINE LOG FORMAT CONFIGURATION
+=========================================
+
+The format of logs/summary/pipeline.log is controlled by the following elements in log_config.py:
+
+1. Format definition:
+   - Line 291: SUMMARY_FORMAT = "%(message)s"
+   - This simple format displays only the message content with no timestamps or other metadata
+
+2. Formatter configuration:
+   - Lines 311-313: The "simple" formatter uses SUMMARY_FORMAT
+       "simple": {
+           "format": SUMMARY_FORMAT
+       }
+
+3. Handler configuration:
+   - Lines 402-409: The "match_summary_file" handler points to pipeline.log and uses the "simple" formatter
+       "match_summary_file": {
+           "class": "log_config.PrependFileHandler",
+           "formatter": "simple",
+           "filename": "logs/summary/pipeline.log",
+           "when": "midnight",
+           "backupCount": 30,
+           "encoding": "utf-8",
+           "level": "INFO"
+       }
+
+4. Logger configuration:
+   - Lines 421-425: The "summary.orchestration" logger uses the "match_summary_file" handler
+       "summary.orchestration": {
+           "handlers": ["match_summary_file"],
+           "level": "INFO",
+           "propagate": false
+       }
+
+To modify the log format, you would need to:
+1. Update the SUMMARY_FORMAT constant
+2. Or create a new formatter and assign it to the match_summary_file handler
