@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 NOTE: All logging configuration is centralized in log_config.py
-      Do not add new loggers directly - use get_logger() or get_summary_logger()
+      Do not add new loggers directly - use get_logger() from log_config
 
 orchestrate_complete.py - Main orchestration script for the sports betting data pipeline
 

@@ -39,7 +39,7 @@ def main():
     # Test 2: Check that the logger shadowing issue is fixed
     test2 = check_file_for_pattern(
         orchestrate_path,
-        "summary_logger = get_summary_logger()",
+        "summary_logger = get_logger('summary.pipeline')",
         "logger = logging.getLogger"
     )
     print(f"\u2713 Test 2: Logger shadowing fixed: {'PASS' if test2 else 'FAIL'}")
