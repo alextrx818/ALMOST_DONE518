@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 """
-log_config.py - Centralized logging configuration for the sports bot.
+# =============================================================================
+# CENTRALIZED LOGGING OVERVIEW
+#
+# 1. SYSTEM / ORCHESTRATION / MONITORING LOGS
+#    • Formatters: "standard", "detailed"
+#    • Handlers : console, orchestrator_file, fetch_cache_file, merge_logic_file, memory_monitor_file, logger_monitor_file, etc.
+#    • Loggers  : orchestrator, pure_json_fetch, fetch_data, merge_logic, memory_monitor, logger_monitor, etc.
+#
+# 2. ALERT LOGS
+#    • Formatter: "human_readable" (same as match summaries unless you override)
+#    • Handler  : alerts_file
+#    • Logger   : alerter_main / alert.*
+#
+# 3. MATCH-SUMMARY LOGS
+#    • Formatter: "human_readable"
+#    • Handler  : match_summary_file
+#    • Logger   : summary.pipeline / summary.*
+#
+# NOTES:
+#  - All new loggers, handlers or formatters must be declared here in log_config.py.
+#  - No direct calls to logging.getLogger(), .addHandler(), Formatter() or basicConfig() outside this module.
+#  - configure_logging() must be invoked at startup before any imports that emit logs.
+# =============================================================================
 
 CENTRAL LOGGING CONFIGURATION
 =============================
@@ -80,18 +102,17 @@ def _central_getLogger(name=None):
     if _get_logger_func is None or _get_summary_logger_func is None:
         return _original_getLogger(name)
         
-    # line 74-81: Route through appropriate factory based on logger name prefix
+    # No special routing for summary.* loggers - they're now statically configured
     if name is None:
         return _get_logger_func('root')
-    elif name.startswith('summary.'):
-        return _get_summary_logger_func(name)
     else:
         return _get_logger_func(name)
 
 # Define standard logger name constants to prevent typos and ensure consistency
 # Application loggers
 ORCHESTRATOR_LOGGER = "orchestrator"
-PIPELINE_LOGGER = "pipeline"
+# line 116: Renamed to avoid confusion with summary.pipeline logger
+PIPELINE_LOGGER = "system_pipeline"  # Creates logs/system_pipeline.log
 MERGE_LOGIC_LOGGER = "merge_logic"
 MEMORY_MONITOR_LOGGER = "memory_monitor"
 NETWORK_RESILIENCE_LOGGER = "network_resilience"
@@ -261,6 +282,10 @@ LOGGING_CONFIG = {
             "()": "log_config.SingleLineFormatter", 
             "format": "%(message)s",  # No timestamp prefix at all
         },
+        "human_readable": {
+            "()": "log_config.SingleLineFormatter",
+            "format": "%(message)s"  # No timestamp prefix, level, or logger name
+        },
     },
     "handlers": {
         "console": {
@@ -344,14 +369,20 @@ LOGGING_CONFIG = {
         "match_summary_file": {
             "class": "log_config.PrependFileHandler",
             "level": "INFO",
-            "formatter": "simple",  # Use the simple formatter with NO timestamp prefix
-            "filename": str(LOGS_DIR / "combined_match_summary.logger"),
+            "formatter": "simple",  # Use simple formatter with NO timestamp prefix
+            "filename": str(LOGS_DIR / "summary" / "pipeline.log"),  # Point to logs/summary/pipeline.log
             "when": "midnight",
             "backupCount": 30,
             "encoding": "utf8",
         },
     },
     "loggers": {
+        # Add explicit static configuration for summary.pipeline
+        "summary.pipeline": {
+            "level": "INFO",
+            "handlers": ["match_summary_file"],  # Only use the match_summary_file handler which uses human_readable formatter
+            "propagate": False
+        },
         ORCHESTRATOR_LOGGER: {
             "level": "INFO",
             "handlers": ["console", "orchestrator_file"],
@@ -453,6 +484,16 @@ def get_standard_formatter():
     return SingleLineFormatter(
         CANONICAL_FORMAT,
         datefmt=ISO_DATE_FORMAT
+    )
+
+# line 478-485: Human-readable formatter for summary logs (no timestamps)
+def get_human_readable_formatter():
+    """
+    Returns a formatter with no timestamp prefix, only the message.
+    Used for human-readable logs like match summaries.
+    """
+    return SingleLineFormatter(
+        "%(message)s"  # No timestamp, level, or logger name - just the message
     )
 
 def configure_logging():
@@ -602,7 +643,7 @@ def create_custom_logger(name, log_file=None, timestamp_prefix=True, level=loggi
 def configure_alert_logger(alert_name):
     """
     Configure a logger for a specific alert.
-    Only configures the logger if it hasn't been configured before.
+    Only configures the logger if it hasn\'t been configured before.
     """
     if alert_name in _configured_alert_loggers:
         return logging.getLogger(alert_name)
@@ -892,42 +933,50 @@ def validate_logger_count():
     
     return True
 
-def get_summary_logger(name):
-    """
-    Get a logger pre-configured for summary output.
-    Writes to logs/summary/{name}.log with newest entries first.
-    """
-    # line 803-804: Create the logger with proper namespace using original function to avoid recursion
-    logger = _original_getLogger(f"summary.{name}")
-    logger.setLevel(logging.INFO)  # Explicitly set logger level
-    
-    # Only configure handlers if not already set
-    if not logger.handlers:
-        # Attach console handler with proper formatting
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-        ch.setFormatter(get_standard_formatter())
-        logger.addHandler(ch)
-        
-        # Configure the summary log directory and file path
-        log_dir = Path(__file__).parent / 'logs' / 'summary'
-        log_dir.mkdir(exist_ok=True, parents=True)  # Ensure directory exists
-        log_path = log_dir / f"{name}.log"
-        
-        # Create and configure the PrependFileHandler
-        # Use our custom PrependHandler for newest-first logs
-        handler = PrependFileHandler(log_path, when='midnight', backupCount=7, encoding='utf-8')
-        handler.setLevel(logging.INFO)  # Critical fix: set explicit level
-        handler.setFormatter(get_standard_formatter())
-        logger.addHandler(handler)
-        
-        # Verify handler was properly attached
-        if not logger.handlers or len(logger.handlers) < 2:
-            print(f"WARNING: Failed to properly configure handlers for summary.{name} logger")
-        # Prevent the log messages from being propagated to the root logger
-        logger.propagate = False
-    
-    return logger
+# The get_summary_logger function has been removed in favor of static configuration
+# For summary.pipeline logger, use: logging.getLogger("summary.pipeline")
+
+# def get_summary_logger(name):
+#     """
+#     Get a logger pre-configured for summary output.
+#     Writes to logs/summary/{name}.log with newest entries first.
+#     
+#     NOTE: For 'pipeline', this function directly returns the statically-configured logger.
+#     For all other summary loggers, it continues to dynamically configure them with
+#     formatters that don't include timestamps.
+#     """
+#     # Special case: if using the main pipeline logger, use static configuration
+#     if name == "pipeline":
+#         # Direct return from standard logging, no additional prefix
+#         return logging.getLogger("summary.pipeline")  # Use the static config defined in LOGGING_CONFIG
+#     
+#     # For all other summary loggers, use dynamic configuration (no timestamps)
+#     logger = _original_getLogger(f"summary.{name}")
+#     logger.setLevel(logging.INFO)
+#     
+#     # Only configure handlers if not already set
+#     if not logger.handlers:
+#         # Attach console handler with human-readable formatting (no timestamps)
+#         ch = logging.StreamHandler()
+#         ch.setLevel(logging.INFO)
+#         ch.setFormatter(logging.Formatter("%(message)s"))  # No timestamp
+#         logger.addHandler(ch)
+#         
+#         # Configure the summary log directory and file path
+#         log_dir = Path(__file__).parent / 'logs' / 'summary'
+#         log_dir.mkdir(exist_ok=True, parents=True)  # Ensure directory exists
+#         log_path = log_dir / f"{name}.log"
+#         
+#         # Create and configure the PrependFileHandler
+#         handler = PrependFileHandler(log_path, when='midnight', backupCount=7, encoding='utf-8')
+#         handler.setLevel(logging.INFO)
+#         handler.setFormatter(logging.Formatter("%(message)s"))  # No timestamp
+#         logger.addHandler(handler)
+#         
+#         # Prevent the log messages from being propagated to the root logger
+#         logger.propagate = False
+#     
+#     return logger
 
 # Configure logging when this module is imported
 # This will set up all loggers with Eastern Time (America/New_York) and MM/DD/YYYY AM/PM format
@@ -1119,7 +1168,7 @@ class CentralLogger(logging.Logger):
 # line 1038-1042: Set global references to factory functions before monkey patching
 # This ensures that all functions are fully defined before we intercept any logging
 _get_logger_func = get_logger
-_get_summary_logger_func = get_summary_logger
+_get_summary_logger_func = get_logger  # Point to regular logger function since we removed get_summary_logger
 
 # line 1044-1045: Apply the monkey patch to intercept all direct logging.getLogger calls
 logging.getLogger = _central_getLogger

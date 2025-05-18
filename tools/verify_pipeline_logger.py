@@ -11,7 +11,7 @@ log_config.configure_logging()
 
 # 2. Grab both the regular pipeline logger and summary.pipeline logger:
 pipeline_logger = log_config.get_logger(log_config.PIPELINE_LOGGER)
-summary_pipeline_logger = log_config.get_summary_logger("pipeline")
+summary_pipeline_logger = logging.getLogger("summary.pipeline")
 
 # 3. Introspect the regular pipeline logger handlers & formatters:
 print("\n=== REGULAR PIPELINE LOGGER ===")

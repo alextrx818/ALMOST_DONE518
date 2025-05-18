@@ -215,12 +215,13 @@ if __name__ == "__main__":
     # Set timezone to Eastern
 
 # Import the centralized logging configuration
-from log_config import get_summary_logger, cleanup_handlers
+import logging
+from log_config import cleanup_handlers
 import atexit
 
 # Get the centralized summary logger
-# line 217-218: Fix - add required name parameter to get_summary_logger()
-summary_logger = get_summary_logger("orchestration")
+# Use static configuration for summary loggers
+summary_logger = logging.getLogger("summary.orchestration")
 
 # Register cleanup function to be called on program exit
 atexit.register(cleanup_handlers)
@@ -318,7 +319,7 @@ async def run_complete_pipeline():
         # STEP 1: Fetch data
         with Timer("JSON fetch"):
             # line 311: Updated to use required name parameter
-            summary_logger = get_summary_logger("pipeline")
+            summary_logger = logging.getLogger("summary.pipeline")
             summary_logger.info("STEP 1: JSON fetch")
             match_ids = await pure_json_fetch_cache.main()
         
