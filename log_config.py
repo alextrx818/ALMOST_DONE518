@@ -307,7 +307,10 @@ LOGGING_CONFIG = {
         "standard": {
             "format": CANONICAL_FORMAT
         },
-        "summary": {
+        "detailed": {
+            "format": CANONICAL_FORMAT
+        },
+        "simple": {
             "format": SUMMARY_FORMAT
         }
     },
@@ -319,7 +322,7 @@ LOGGING_CONFIG = {
         },
         "summary_file": {
             "class": "log_config.PrependFileHandler",
-            "formatter": "summary",
+            "formatter": "simple",
             "filename": "logs/summary/pipeline.log",
             "when": "midnight",
             "backupCount": 30,
@@ -400,8 +403,8 @@ LOGGING_CONFIG = {
         },
         "match_summary_file": {
             "class": "log_config.PrependFileHandler",
-            "formatter": "summary",
-            "filename": "logs/summary/orchestration.log",
+            "formatter": "simple",
+            "filename": "logs/summary/pipeline.log",
             "when": "midnight",
             "backupCount": 30,
             "encoding": "utf-8",
@@ -424,7 +427,7 @@ LOGGING_CONFIG = {
             "propagate": False
         },
         "summary_json": {
-            "handlers": ["summary_json_file"],
+            "handlers": ["console", "summary_json_file"],
             "level": "INFO",
             "propagate": False
         },
@@ -434,17 +437,17 @@ LOGGING_CONFIG = {
             "propagate": False
         },
         "pure_json_fetch": {
-            "handlers": ["fetch_cache_file"],
+            "handlers": ["console", "fetch_cache_file"],
             "level": "DEBUG",
             "propagate": False
         },
         "fetch_data": {
-            "handlers": ["fetch_data_file"],
+            "handlers": ["console", "fetch_data_file"],
             "level": "INFO",
             "propagate": False
         },
         "merge_logic": {
-            "handlers": ["merge_logic_file"],
+            "handlers": ["console", "merge_logic_file"],
             "level": "DEBUG",
             "propagate": False
         },
@@ -521,7 +524,9 @@ def validate_logger_configuration():
         "urllib3",            # HTTP client library
         "requests",           # HTTP client library
         "asyncio",            # Async library
-        "chardet"             # Character encoding detection
+        "chardet",            # Character encoding detection
+        "concurrent.futures", # Concurrent execution
+        "multiprocessing"     # Multiprocessing module
     ]
     
     # Check all loggers
@@ -551,8 +556,8 @@ def validate_logger_configuration():
             elif isinstance(handler, logging.FileHandler):
                 has_file = True
                 
-            # Allow any format for test loggers
-            if name.startswith(TEST_LOGGER_PREFIX):
+            # Allow any format for test loggers and summary loggers
+            if name.startswith(TEST_LOGGER_PREFIX) or name.startswith(SUMMARY_PREFIX):
                 continue
             
             # Check for formatter consistency
@@ -583,7 +588,8 @@ def validate_logger_count():
     # Define expected loggers
     EXPECTED_LOGGERS = {
         'summary', 'memory_monitor', 'pure_json_fetch', 'fetch_data', 
-        'merge_logic', 'alerter_main', 'orchestrator', 'root'
+        'merge_logic', 'alerter_main', 'orchestrator', 'root',
+        'summary_json', 'logger_monitor'
     }
     # Check if we're in strict validation mode (default is strict)
     strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
@@ -645,10 +651,7 @@ def validate_logger_count():
         # Just log a warning if we have no unexpected loggers but count is high
         print(f"WARNING: High logger count but all are expected: {error_msg}", file=sys.stderr)
     
-    # Return True if validation passes
-    return True
-    
-    # Check handler count for each logger
+    # Now check handler count for each logger
     for name, logger in logging.Logger.manager.loggerDict.items():
         if hasattr(logger, 'handlers'):
             handler_count = len(logger.handlers)

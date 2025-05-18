@@ -1,0 +1,14 @@
+# Base directories
+BASE_DIR = Path(__file__).parent
+LOGS_DIR = BASE_DIR / "logs"
+
+# Ensure log directories exist
+for log_dir in [
+    LOGS_DIR,
+    LOGS_DIR / "fetch",
+    LOGS_DIR / "summary",
+    LOGS_DIR / "alerts",
+    LOGS_DIR / "monitor",
+    LOGS_DIR / "memory",
+]:
+    log_dir.mkdir(exist_ok=True, parents=True)
