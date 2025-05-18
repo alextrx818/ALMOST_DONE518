@@ -49,6 +49,29 @@ import sys
 import os
 import pytz
 import time
+
+# Define standard logger name constants to prevent typos and ensure consistency
+# Application loggers
+ORCHESTRATOR_LOGGER = "orchestrator"
+PIPELINE_LOGGER = "pipeline"
+MERGE_LOGIC_LOGGER = "merge_logic"
+MEMORY_MONITOR_LOGGER = "memory_monitor"
+NETWORK_RESILIENCE_LOGGER = "network_resilience"
+PURE_JSON_FETCH_LOGGER = "pure_json_fetch"
+FETCH_DATA_LOGGER = "fetch_data"
+
+# Summary loggers (prefixed with 'summary.')
+SUMMARY_PREFIX = "summary."
+SUMMARY_PIPELINE = f"{SUMMARY_PREFIX}pipeline"
+SUMMARY_ORCHESTRATION = f"{SUMMARY_PREFIX}orchestration"
+SUMMARY_JSON = f"{SUMMARY_PREFIX}summary_json"
+
+# Alert loggers (prefixed with 'alert.')
+ALERT_PREFIX = "alert."
+
+# Test loggers
+TEST_LOGGER_PREFIX = "test_"
+PREPEND_TEST_LOGGER = "prepend_test"
 import datetime
 from logging.handlers import TimedRotatingFileHandler
 
@@ -61,26 +84,46 @@ class PrependFileHandler(TimedRotatingFileHandler):
     """
     def emit(self, record):
         """Override the emit method to prepend rather than append."""
-        msg = self.format(record) + '\n'
-        path = self.baseFilename
-        
-        try:
-            # Read existing content if file exists
-            if os.path.exists(path):
-                with open(path, 'r', encoding=self.encoding, errors='replace') as f:
-                    existing_content = f.read()
-            else:
+        # line 63-65: Format the log record and determine the target path
+        if self.filter(record):
+            msg = self.format(record) + '\n'
+            path = self.baseFilename
+            
+            # line 68-70: Ensure parent directory exists - critical for reliable logging
+            try:
+                directory = os.path.dirname(path)
+                os.makedirs(directory, exist_ok=True)
+                
+                # line 73-83: Read existing content with comprehensive error handling
                 existing_content = ''
+                if os.path.exists(path) and os.path.getsize(path) > 0:
+                    try:
+                        with open(path, 'r', encoding=self.encoding, errors='replace') as f:
+                            existing_content = f.read()
+                    except Exception as read_error:
+                        # Handle errors but continue with empty content
+                        self.handleError(record)
+                        print(f"WARNING: Error reading log file {path}: {read_error}")
+                        # Continue with empty content rather than failing
                 
-            # Write new content + existing content
-            with open(path, 'w', encoding=self.encoding) as f:
-                f.write(msg + existing_content)
-                f.flush()  # Ensure content is written to disk
-                os.fsync(f.fileno())  # Force write to disk
-                
-        except Exception as e:
-            self.handleError(record)
-            raise
+                # line 85-90: Write content in the proper newest-first order
+                # with robust error handling and synchronous write
+                with open(path, 'w', encoding=self.encoding) as f:
+                    # Critical line - write new content followed by existing content
+                    f.write(msg + existing_content)
+                    f.flush()  # Force flush to disk
+                    # Use os.fsync for extra durability on critical logs
+                    if hasattr(f, 'fileno'):
+                        try:
+                            os.fsync(f.fileno())
+                        except OSError:
+                            pass  # Ignore fsync errors
+                    
+            except Exception as e:
+                # line 93-95: Handle any errors without crashing
+                self.handleError(record)
+                print(f"ERROR: PrependFileHandler.emit failed: {e}")
+                # Don't re-raise to prevent interrupting application flow
             
     def flush(self):
         """Flush the stream."""
@@ -162,11 +205,11 @@ LOGGING_CONFIG = {
     "disable_existing_loggers": False,
     "formatters": {
         "standard": {
-            "format": "%(asctime)s [%(levelname)s] %(message)s",
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
         },
         "detailed": {
-            "format": "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
         },
         "simple": {
@@ -300,7 +343,7 @@ LOGGING_CONFIG = {
         },
         OU3_LOGGER: {
             "level": "INFO",
-            "handlers": [],  # Handlers will be added by the alert system
+            "handlers": ["console"],  # Default console handler, alert system will add more
             "propagate": False,
         },
     },
@@ -314,6 +357,21 @@ LOGGING_CONFIG = {
 
 # Dictionary to track alert loggers that have been configured
 _configured_alert_loggers = set()
+
+# Loggers that should only output to console and not create file handlers
+_CONSOLE_ONLY_LOGGERS = ['console', 'stdout', 'stderr']
+
+def _get_standard_formatter():
+    """
+    Returns the standard formatter used across all loggers.
+    """
+    # line 321-326: The canonical format: "timestamp [level] logger: message"
+    # ISO 8601 format: YYYY-MM-DD HH:MM:SS,mmm
+    return SingleLineFormatter(
+        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        # Use the default ISO format (YYYY-MM-DD HH:MM:SS,mmm) which is the canonical format
+        datefmt=None
+    )
 
 def configure_logging():
     """Configure all loggers using dictConfig.
@@ -333,8 +391,45 @@ def get_logger(name):
     """
     Get a properly configured logger by name.
     If the logger has already been configured in dictConfig, returns it.
+    Otherwise, configures it with standardized formatting and handlers.
     """
-    return logging.getLogger(name)
+    # line 343-344: Get or create the logger
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)  # Ensure the logger level is set appropriately
+    
+    # line 347-348: Only configure if not already set up
+    if not logger.handlers:
+        # line 350-352: Attach global console handler with proper level
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)  # Explicitly set handler level
+        ch.setFormatter(_get_standard_formatter())
+        logger.addHandler(ch)
+        
+        # line 355-356: Attach file handler (prepend) unless console-only
+        if name not in _CONSOLE_ONLY_LOGGERS:
+            # line 358-359: Create necessary directories
+            log_dir = Path(__file__).parent / 'logs'
+            log_dir.mkdir(exist_ok=True)
+            
+            # line 362-363: Determine log file path with consistent naming
+            log_path = log_dir / f"{name.replace('.', '_')}.log"
+            
+            # line 365-367: Create PrependFileHandler with proper rotation settings
+            handler = PrependFileHandler(log_path, when='midnight', backupCount=30, encoding='utf-8')
+            
+            # line 369-371: Critical fixes - explicitly set level and formatter
+            handler.setLevel(logging.INFO)  # Ensure handler passes records through
+            handler.setFormatter(_get_standard_formatter())
+            
+            # line 373-374: Add the configured handler to the logger
+            logger.addHandler(handler)
+            
+            # line 376-377: Verify handler was properly attached
+            if not logger.handlers or len(logger.handlers) < 2:
+                print(f"WARNING: Failed to properly configure handlers for {name} logger")
+    
+    # line 380-381: Return the properly configured logger
+    return logger
 
 
 def create_custom_logger(name, log_file=None, timestamp_prefix=True, level=logging.INFO):
@@ -483,6 +578,107 @@ def cleanup_handlers():
         except Exception as e:
             logging.error(f"Error cleaning up handler {handler}: {e}", exc_info=True)
 
+def validate_logger_configuration():
+    """
+    Comprehensive validation of logger configuration.
+    Checks formatter consistency, handler configuration, and naming conventions.
+    Returns True if all validation checks pass, False otherwise.
+    """
+    # Run individual validation checks
+    format_valid = validate_formatter_consistency()
+    handler_valid = validate_handler_configuration()
+    count_valid = validate_logger_count()
+    
+    return format_valid and handler_valid and count_valid
+
+def validate_formatter_consistency():
+    """
+    Validate that all loggers use consistent formatters.
+    Returns True if validation passes, False otherwise.
+    """
+    # Check if we're in strict validation mode (default is strict)
+    strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
+    validation_passed = True
+    
+    # Expected format for standard loggers
+    expected_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    
+    # Check all loggers
+    for name, logger in logging.Logger.manager.loggerDict.items():
+        if not isinstance(logger, logging.Logger):
+            continue
+            
+        # Skip standard library loggers
+        if any(name.startswith(prefix) for prefix in STANDARD_LOGGERS):
+            continue
+            
+        # Verify formatter for each handler
+        for handler in logger.handlers:
+            # Skip handlers without formatters
+            if not hasattr(handler, 'formatter') or handler.formatter is None:
+                continue
+                
+            # Special case for summary loggers
+            if name.startswith(SUMMARY_PREFIX) and isinstance(handler, logging.FileHandler):
+                # Summary loggers may use simple format
+                continue
+                
+            # Check for formatter consistency
+            if hasattr(handler.formatter, '_fmt') and not (
+                handler.formatter._fmt == expected_format or 
+                name.startswith(ALERT_PREFIX) or 
+                name.startswith(TEST_LOGGER_PREFIX)
+            ):
+                error_msg = f"Inconsistent formatter for logger '{name}': {handler.formatter._fmt}"
+                if strict_mode:
+                    raise ValueError(error_msg)
+                else:
+                    print(f"WARNING: {error_msg}", file=sys.stderr)
+                    validation_passed = False
+    
+    return validation_passed
+
+def validate_handler_configuration():
+    """
+    Validate that all loggers have appropriate handlers.
+    Returns True if validation passes, False otherwise.
+    """
+    # Check if we're in strict validation mode (default is strict)
+    strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
+    validation_passed = True
+    
+    # Check all loggers
+    for name, logger in logging.Logger.manager.loggerDict.items():
+        if not isinstance(logger, logging.Logger):
+            continue
+            
+        # Skip standard library loggers
+        if any(name.startswith(prefix) for prefix in STANDARD_LOGGERS):
+            continue
+            
+        # All loggers should have at least one handler (either directly or via parent)
+        if not logger.handlers and not logger.parent.handlers:
+            error_msg = f"Logger '{name}' has no handlers"
+            if strict_mode:
+                raise ValueError(error_msg)
+            else:
+                print(f"WARNING: {error_msg}", file=sys.stderr)
+                validation_passed = False
+                
+        # Check for appropriate handler types
+        has_console = any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        has_file = any(isinstance(h, (logging.FileHandler, TimedRotatingFileHandler, PrependFileHandler)) 
+                       for h in logger.handlers)
+                       
+        # Application loggers should have both console and file handlers
+        if not (name.startswith(SUMMARY_PREFIX) or name.startswith(ALERT_PREFIX) or 
+                name.startswith(TEST_LOGGER_PREFIX)) and not (has_console and has_file):
+            warning_msg = f"Logger '{name}' missing expected handlers (console: {has_console}, file: {has_file})"
+            print(f"WARNING: {warning_msg}", file=sys.stderr)
+            # Don't fail validation for this, just warn
+    
+    return validation_passed
+
 def validate_logger_count():
     """
     Validate that logger count and handler count hasn't grown beyond expected.
@@ -510,11 +706,21 @@ def validate_logger_count():
     # Check for unexpected logger growth
     unexpected_loggers = []
     for name in logging.Logger.manager.loggerDict:
-        # Skip loggers that are expected
+        # line 587-589: Skip loggers that are expected
         if name in LOGGING_CONFIG["loggers"] or name in _configured_alert_loggers:
             continue
             
-        # Skip standard library loggers
+        # line 591-593: Skip summary loggers created by get_summary_logger("name")
+        # These follow the pattern "summary.[name]" after our standardization
+        if name.startswith("summary."):
+            continue
+            
+        # line 595-597: Skip specific module loggers that are created during execution
+        # but aren't declared in the static LOGGING_CONFIG dictionary
+        if name in ("orchestrate_complete", "alert_discovery"):
+            continue
+            
+        # line 596-598: Skip standard library loggers
         if any(name == std_logger or name.startswith(f"{std_logger}.") for std_logger in STANDARD_LOGGERS):
             continue
             
@@ -555,33 +761,38 @@ def validate_logger_count():
     
     return True
 
-def get_summary_logger():
+def get_summary_logger(name):
     """
-    Get or create a logger for match summaries with optimized file handling.
+    Get a logger pre-configured for summary output.
+    Writes to logs/summary/{name}.log with newest entries first.
     """
-    logger = logging.getLogger("summary")
+    # Create the logger with proper namespace
+    logger = logging.getLogger(f"summary.{name}")
+    logger.setLevel(logging.INFO)  # Explicitly set logger level
     
-    # Prevent adding handlers multiple times
+    # Only configure handlers if not already set
     if not logger.handlers:
-        logger.setLevel(logging.INFO)
+        # Attach console handler with proper formatting
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(_get_standard_formatter())
+        logger.addHandler(ch)
         
-        # Create logs directory if it doesn't exist
-        log_dir = Path(__file__).parent / 'logs'
-        log_dir.mkdir(exist_ok=True)
+        # Configure the summary log directory and file path
+        log_dir = Path(__file__).parent / 'logs' / 'summary'
+        log_dir.mkdir(exist_ok=True, parents=True)  # Ensure directory exists
+        log_path = log_dir / f"{name}.log"
         
-        log_file = log_dir / 'match_summaries.log'
+        # Create and configure the PrependFileHandler
+        # Use our custom PrependHandler for newest-first logs
+        handler = PrependFileHandler(log_path, when='midnight', backupCount=7, encoding='utf-8')
+        handler.setLevel(logging.INFO)  # Critical fix: set explicit level
+        handler.setFormatter(_get_standard_formatter())
+        logger.addHandler(handler)
         
-        # Use standard FileHandler in append mode for better performance
-        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        
-        # Create a simple formatter (no timestamp for individual lines)
-        formatter = logging.Formatter('%(message)s')
-        file_handler.setFormatter(formatter)
-        
-        # Add the handler to the logger
-        logger.addHandler(file_handler)
-        
+        # Verify handler was properly attached
+        if not logger.handlers or len(logger.handlers) < 2:
+            print(f"WARNING: Failed to properly configure handlers for summary.{name} logger")
         # Prevent the log messages from being propagated to the root logger
         logger.propagate = False
     

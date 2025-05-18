@@ -67,7 +67,8 @@ class LoggingSystemTest(FootballTrackingTestCase):
                        
     def test_get_summary_logger_returns_correct_logger(self):
         """Test that get_summary_logger returns the special summary logger."""
-        summary_logger = get_summary_logger()
+        # line 70: Update test to use required name parameter
+        summary_logger = get_summary_logger("test_summary")
         
         # Check it's the summary logger
         self.assertEqual(summary_logger.name, SUMMARY_LOGGER)

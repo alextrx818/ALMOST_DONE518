@@ -38,9 +38,11 @@ Example:
 
 
 import abc
-import logging
 import traceback
 from typing import Dict, Optional, Union, Any
+
+# Use the central logger factory instead of direct logging
+from log_config import get_logger
 
 
 class Alert(abc.ABC):
@@ -62,18 +64,11 @@ class Alert(abc.ABC):
         from pathlib import Path
         
         self.name = name
-        self.logger = logging.getLogger(name)
+        # Use standardized logger name convention for alerts
+        self.logger = get_logger(f"alert.{name}")
         
-        # Optional debug file handler
+        # Set debug level if requested
         if debug:
-            debug_handler = logging.FileHandler(
-                Path(__file__).parent / f"{name}_debug.log"
-            )
-            debug_handler.setLevel(logging.DEBUG)
-            debug_handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-            )
-            self.logger.addHandler(debug_handler)
             self.logger.setLevel(logging.DEBUG)
     
     @abc.abstractmethod

@@ -42,9 +42,11 @@ import inspect
 import importlib
 import importlib.util
 from pathlib import Path
-import logging
 from datetime import datetime
 from typing import Dict, List, Any, Type, Optional
+
+# Use the central logger factory instead of direct logging
+from log_config import get_logger
 
 # Import our base alert class to enable discovery of subclasses
 try:
@@ -83,13 +85,9 @@ from combined_match_summary import (
     API_DATETIME_FORMAT
 )
 
-# Configure root logger for console output
-root_logger = logging.getLogger()
-if not root_logger.handlers:
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    root_logger.addHandler(console)
-    root_logger.setLevel(logging.INFO)
+# Use the central logger factory for consistent logging
+root_logger = get_logger("alerter_main")
+root_logger.setLevel(logging.INFO)
 
 # Telegram configuration with hardcoded credentials from telegram_config.py
 TELEGRAM_TOKEN = "7764953908:AAHMpJsw5vKQYPiJGWrj0PgDkztiIgY_dko"
@@ -476,15 +474,9 @@ class AlerterMain:
         # Store the file_base mapping for this alert
         self.alert_file_bases[id(alert)] = file_base
             
-        # Setup logger using actual file name
-        logger = logging.getLogger(file_base)
-        if not logger.handlers:
-            logger.setLevel(logging.INFO)
-            # Save log files inside the Alerts folder with file name
-            log_path = os.path.join(self.alerts_dir, f"{file_base}.logger")
-            handler = logging.FileHandler(log_path)
-            handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
-            logger.addHandler(handler)
+        # Use the central logger factory with standardized naming convention
+        logger = get_logger(f"alert.{file_base}")
+        logger.setLevel(logging.INFO)
         # Use same file_base for seen IDs storage
         # Load seen IDs from disk - stored in Alerts directory with file base name
         seen_file = os.path.join(self.alerts_dir, f"{file_base}.seen.json")

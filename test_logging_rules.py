@@ -43,16 +43,17 @@ if test_log_path.exists():
     # Remove existing file to start fresh
     os.remove(test_log_path)
 
-# Create a specialized test logger with our PrependFileHandler
-test_logger = logging.getLogger("prepend_test")
+# Import our centralized logging facilities
+from log_config import get_logger, PrependFileHandler, _get_standard_formatter
+
+# Create a specialized test logger using the central factory method
+test_logger = get_logger("prepend_test")
 test_logger.setLevel(logging.INFO)
 
-# Import our custom handler directly
-from log_config import PrependFileHandler
+# For this special test case, we'll add a dedicated PrependFileHandler
+# Note: In normal application code, handlers should only be configured in log_config.py
 file_handler = PrependFileHandler(str(test_log_path), when='midnight', backupCount=3)
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s',
-                            '%m/%d/%Y %I:%M:%S %p %Z')
-file_handler.setFormatter(formatter)
+file_handler.setFormatter(_get_standard_formatter())
 test_logger.addHandler(file_handler)
 
 # Write entries in sequence - should appear in reverse order in log

@@ -4,3 +4,38 @@
 *.original
 archive/
 .gitignore.d/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+sports_venv/
+venv/
+env/
+.env/
+
+# Logs and cache files
+logs/
+*.log
+cache/
+*.json.cache
+full_match_cache.json
+
+# Temporary files
+*.tmp
+.DS_Store
+diagnostics/
+
+# Project specific files
+summary_data.json
+OU3.logger
+
+# Tools diagnostic output
+handler_overview.txt

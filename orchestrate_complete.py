@@ -117,7 +117,10 @@ import memory_monitor
 import logger_monitor
 
 # Setup logging before other imports to ensure proper configuration
-from log_config import get_logger, validate_logger_count, cleanup_handlers
+from log_config import get_logger, validate_logger_configuration, cleanup_handlers, configure_logging
+
+# Explicitly configure logging at application startup
+configure_logging()
 
 # Module-level logger initialized via centralized logging system
 # Using get_logger() ensures proper handler setup and validation
@@ -216,10 +219,36 @@ from log_config import get_summary_logger, cleanup_handlers
 import atexit
 
 # Get the centralized summary logger
-summary_logger = get_summary_logger()
+# line 217-218: Fix - add required name parameter to get_summary_logger()
+summary_logger = get_summary_logger("orchestration")
 
 # Register cleanup function to be called on program exit
 atexit.register(cleanup_handlers)
+
+# Import and run logging validation to ensure all loggers comply with standards
+if __name__ == "__main__":
+    try:
+        # First run the enhanced internal validation that comes with log_config
+        logger.info("Performing comprehensive logging system validation...")
+        config_valid = validate_logger_configuration()
+        
+        # Then run the external validation module for additional checks
+        from tools.validate_logging import validate_logging_compliance
+        compliance_valid = validate_logging_compliance(strict_mode=False)
+        
+        # Log the combined results
+        if config_valid and compliance_valid:
+            logger.info("✅ Logging system validation passed completely")
+        elif config_valid:
+            logger.warning("⚠️ Logging configuration valid but compliance check found issues")
+        elif compliance_valid:
+            logger.warning("⚠️ Logging compliance checks passed but configuration validation found issues")
+        else:
+            logger.warning("⚠️ Multiple logging validation issues found. See output above.")
+    except Exception as e:
+        logger.warning(f"⚠️ Logging validation encountered an error: {str(e)}")
+        logger.debug(f"Validation error details: {traceback.format_exc()}")
+
 
 def get_eastern_time():
     # Use the cached timezone object for better performance
@@ -288,7 +317,8 @@ async def run_complete_pipeline():
     with Timer("Full pipeline"):
         # STEP 1: Fetch data
         with Timer("JSON fetch"):
-            summary_logger = get_summary_logger()
+            # line 311: Updated to use required name parameter
+            summary_logger = get_summary_logger("pipeline")
             summary_logger.info("STEP 1: JSON fetch")
             match_ids = await pure_json_fetch_cache.main()
         

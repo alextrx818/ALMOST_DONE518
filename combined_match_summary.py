@@ -13,8 +13,9 @@ from pathlib import Path
 from log_config import get_summary_logger, cleanup_handlers
 import atexit
 
-# Get the centralized summary logger
-summary_logger = get_summary_logger()
+# Get the centralized summary logger with specific name
+# Use 'pipeline' to match the name used in orchestrate_complete.py
+summary_logger = get_summary_logger("pipeline")
 
 # Register cleanup function to be called on program exit
 atexit.register(cleanup_handlers)
