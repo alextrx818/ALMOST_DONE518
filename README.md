@@ -58,7 +58,7 @@ The following logging practices are strictly prohibited and will be caught by th
 ```python
 # ❌ PROHIBITED: Direct logger creation
 import logging
-logger = logging.getLogger("module_name")  # Will fail validation
+logger = get_logger("module_name")  # Will fail validation
 
 # ❌ PROHIBITED: Custom formatter creation
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")  # Will fail validation

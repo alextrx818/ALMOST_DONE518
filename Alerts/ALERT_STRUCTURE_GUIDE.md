@@ -106,7 +106,7 @@ ALERT_PARAMS = {
 ```python
 def __init__(self, name: str, debug: bool = False):
     self.name = name
-    self.logger = logging.getLogger(name)
+    self.logger = get_logger(name)
     if debug:
         handler = logging.FileHandler(Path(__file__).parent / f"{name}_debug.log")
         handler.setLevel(logging.DEBUG)

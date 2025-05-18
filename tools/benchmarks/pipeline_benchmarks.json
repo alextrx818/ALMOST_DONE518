@@ -1,0 +1,68 @@
+{
+  "benchmarks": [
+    {
+      "timestamp": "2025-05-18T01:08:44.189120",
+      "operation": "json_fetch",
+      "execution_time": 0.5001683235168457,
+      "sys_info": {
+        "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]"
+      }
+    },
+    {
+      "timestamp": "2025-05-18T01:08:44.989756",
+      "operation": "merge_and_enrich",
+      "execution_time": 0.800128698348999,
+      "sys_info": {
+        "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]"
+      }
+    },
+    {
+      "timestamp": "2025-05-18T01:08:45.290573",
+      "operation": "summary_generation",
+      "execution_time": 0.30009937286376953,
+      "sys_info": {
+        "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]"
+      }
+    },
+    {
+      "timestamp": "2025-05-18T01:08:45.491128",
+      "operation": "alert_processing",
+      "execution_time": 0.20009565353393555,
+      "sys_info": {
+        "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]"
+      }
+    }
+  ],
+  "summary": {
+    "operations": {
+      "json_fetch": {
+        "count": 1,
+        "total_time": 0.5001683235168457,
+        "min_time": 0.5001683235168457,
+        "max_time": 0.5001683235168457,
+        "avg_time": 0.5001683235168457
+      },
+      "merge_and_enrich": {
+        "count": 1,
+        "total_time": 0.800128698348999,
+        "min_time": 0.800128698348999,
+        "max_time": 0.800128698348999,
+        "avg_time": 0.800128698348999
+      },
+      "summary_generation": {
+        "count": 1,
+        "total_time": 0.30009937286376953,
+        "min_time": 0.30009937286376953,
+        "max_time": 0.30009937286376953,
+        "avg_time": 0.30009937286376953
+      },
+      "alert_processing": {
+        "count": 1,
+        "total_time": 0.20009565353393555,
+        "min_time": 0.20009565353393555,
+        "max_time": 0.20009565353393555,
+        "avg_time": 0.20009565353393555
+      }
+    }
+  }
+}

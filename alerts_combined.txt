@@ -116,7 +116,7 @@ ALERT_PARAMS = {
 ```python
 def __init__(self, name: str, debug: bool = False):
     self.name = name
-    self.logger = logging.getLogger(name)
+    self.logger = get_logger(name)
     if debug:
         handler = logging.FileHandler(Path(__file__).parent / f"{name}_debug.log")
         handler.setLevel(logging.DEBUG)
@@ -2380,7 +2380,7 @@ from combined_match_summary import (
 )
 
 # Configure root logger for console output
-root_logger = logging.getLogger()
+root_logger = get_logger()
 if not root_logger.handlers:
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -2773,7 +2773,7 @@ class AlerterMain:
         self.alert_file_bases[id(alert)] = file_base
             
         # Setup logger using actual file name
-        logger = logging.getLogger(file_base)
+        logger = get_logger(file_base)
         if not logger.handlers:
             logger.setLevel(logging.INFO)
             # Save log files inside the Alerts folder with file name
@@ -3027,7 +3027,7 @@ import traceback
 from typing import Dict, Optional, Union, Any
 
 # Set up module-level logger
-logger = logging.getLogger("base_alert")
+logger = get_logger("base_alert")
 
 class Alert(abc.ABC):
     """
@@ -3048,7 +3048,7 @@ class Alert(abc.ABC):
         from pathlib import Path
         
         self.name = name
-        self.logger = logging.getLogger(name)
+        self.logger = get_logger(name)
         
         # Optional debug file handler
         if debug:

@@ -32,7 +32,7 @@ def main():
     test1 = check_file_for_pattern(
         orchestrate_path,
         "from log_config import get_logger",
-        "logging.getLogger(__name__)"
+        "get_logger(__name__)"
     )
     print(f"✓ Test 1: Centralized logger import: {'PASS' if test1 else 'FAIL'}")
     

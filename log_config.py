@@ -237,17 +237,21 @@ LOGGER_MONITOR_LOGGER = "logger_monitor"
 SUMMARY_LOGGER = "summary"
 OU3_LOGGER = "OU3"
 
+# Canonical log line format used by all loggers in this application
+CANONICAL_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+ISO_DATE_FORMAT = "%Y-%m-%d %H:%M:%S,%f"  # ISO‐8601
+
 # Central logging configuration
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "standard": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "format": CANONICAL_FORMAT,
             "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
         },
         "detailed": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "format": CANONICAL_FORMAT,
             "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
         },
         "simple": {
@@ -313,8 +317,17 @@ LOGGING_CONFIG = {
         "memory_monitor_file": {
             "class": "log_config.PrependFileHandler",
             "level": "INFO",
-            "formatter": "detailed",
+            "formatter": "standard",
             "filename": str(LOGS_DIR / "memory" / "memory_monitor.log"),
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf8",
+        },
+        "alerts_file": {
+            "class": "log_config.PrependFileHandler",
+            "level": "INFO",
+            "formatter": "standard",
+            "filename": str(LOGS_DIR / "alerts" / "alerter_main.log"),
             "when": "midnight",
             "backupCount": 30,
             "encoding": "utf8",
@@ -374,6 +387,22 @@ LOGGING_CONFIG = {
             "handlers": ["logger_monitor_file", "console"],
             "propagate": False,
         },
+        "alerter_main": {
+            "level": "INFO",
+            "handlers": ["alerts_file", "console"],
+            "propagate": False,
+        },
+        # Suppress overly chatty third-party loggers
+        "asyncio": {
+            "handlers": [],      # no handlers → goes nowhere
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "concurrent.futures": {
+            "handlers": [],
+            "level": "WARNING",
+            "propagate": False,
+        },
         SUMMARY_LOGGER: {
             "level": "INFO",
             "handlers": ["console", "match_summary_file"],  # Use our new handler with SingleLineFormatter
@@ -413,6 +442,7 @@ STANDARD_LOGGERS = [
     SUMMARY_JSON
 ]
 
+
 def get_standard_formatter():
     """
     Returns the standard formatter used across all loggers.
@@ -421,9 +451,8 @@ def get_standard_formatter():
     # line 321-326: The canonical format: "timestamp [level] logger: message"
     # ISO 8601 format: YYYY-MM-DD HH:MM:SS,mmm
     return SingleLineFormatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        # Use the default ISO format (YYYY-MM-DD HH:MM:SS,mmm) which is the canonical format
-        datefmt=None
+        CANONICAL_FORMAT,
+        datefmt=ISO_DATE_FORMAT
     )
 
 def configure_logging():
@@ -536,7 +565,7 @@ def create_custom_logger(name, log_file=None, timestamp_prefix=True, level=loggi
     console = logging.StreamHandler()
     console.setLevel(level)
     console.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(message)s',
+        CANONICAL_FORMAT,
         '%m/%d/%Y %I:%M:%S %p %Z'
     ))
     logger.addHandler(console)
@@ -559,7 +588,7 @@ def create_custom_logger(name, log_file=None, timestamp_prefix=True, level=loggi
         if timestamp_prefix:
             # For normal logs: Use SingleLineFormatter for proper multi-line handling
             file_handler.setFormatter(SingleLineFormatter(
-                '%(asctime)s [%(levelname)s] %(message)s',
+                CANONICAL_FORMAT,
                 '%m/%d/%Y %I:%M:%S %p %Z'
             ))
         else:
@@ -616,7 +645,9 @@ def cleanup_handlers():
     """
     # Get all loggers including the root logger and all named loggers
     loggers = [logging.getLogger()]  # Start with root logger
-    loggers.extend(logging.getLogger(name) for name in logging.root.manager.loggerDict)
+    # Get a static list of names to avoid modifying the dictionary during iteration
+    logger_names = list(logging.root.manager.loggerDict.keys())
+    loggers.extend(logging.getLogger(name) for name in logger_names)
     
     # Clean up handlers for each logger
     for logger in loggers:
@@ -678,7 +709,7 @@ def validate_formatter_consistency():
         return True
         
     # Line 604-606: Define expected formats for different logger types
-    STANDARD_FORMAT = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    STANDARD_FORMAT = CANONICAL_FORMAT  # Use the canonical format constant
     SUMMARY_FORMAT = '%(message)s'  # Summary loggers intentionally use a simpler format
     validation_passed = True
     
@@ -780,6 +811,7 @@ def validate_logger_count():
     EXPECTED_HANDLERS_PER_LOGGER = 2  # Most loggers have console + file
     
     # Standard library/framework loggers that are expected and can be ignored
+    # Third-party library loggers that are expected and can be ignored
     STANDARD_LOGGERS = [
         'asyncio', 'concurrent', 'concurrent.futures',
         'aiohttp', 'aiohttp.access', 'aiohttp.client', 'aiohttp.internal',
@@ -812,7 +844,7 @@ def validate_logger_count():
             
         # line 595-597: Skip specific module loggers that are created during execution
         # but aren't declared in the static LOGGING_CONFIG dictionary
-        if name in ("orchestrate_complete", "alert_discovery"):
+        if name in ("orchestrate_complete", "alert_discovery", "alert") or name.startswith("alert."):
             continue
             
         # line 596-598: Skip standard library loggers
@@ -943,7 +975,7 @@ def test_logging_rules():
     
     # Create a handler for our test logger
     file_handler = PrependFileHandler(str(test_log_path), when='midnight', backupCount=3)
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s',
+    formatter = logging.Formatter(CANONICAL_FORMAT,
                                 '%m/%d/%Y %I:%M:%S %p %Z')
     file_handler.setFormatter(formatter)
     test_logger.addHandler(file_handler)

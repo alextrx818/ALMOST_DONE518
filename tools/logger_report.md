@@ -12,40 +12,40 @@ Total files analyzed: 38
 ## Files with Direct logging.getLogger Calls
 
 ### /root/Complete_Seperate/logging_diagnostic.py
-- Line 61 at module level: logging.getLogger(None)
+- Line 61 at module level: get_logger(None)
 
 ### /root/Complete_Seperate/memory_monitor.py
-- Line 32 at module level: logging.getLogger(memory_monitor)
+- Line 32 at module level: get_logger(memory_monitor)
 
 ### /root/Complete_Seperate/log_config.py
-- Line 337 in get_logger: logging.getLogger(name)
-- Line 358 in create_custom_logger: logging.getLogger(name)
-- Line 410 in configure_alert_logger: logging.getLogger(alert_name)
-- Line 427 in configure_alert_logger: logging.getLogger(alert_name)
-- Line 449 in cleanup_handlers: logging.getLogger(None)
-- Line 450 in cleanup_handlers: logging.getLogger(name)
-- Line 562 in get_summary_logger: logging.getLogger(summary)
-- Line 631 in test_logging_rules: logging.getLogger(prepend_test)
+- Line 337 in get_logger: get_logger(name)
+- Line 358 in create_custom_logger: get_logger(name)
+- Line 410 in configure_alert_logger: get_logger(alert_name)
+- Line 427 in configure_alert_logger: get_logger(alert_name)
+- Line 449 in cleanup_handlers: get_logger(None)
+- Line 450 in cleanup_handlers: get_logger(name)
+- Line 562 in get_summary_logger: get_logger(summary)
+- Line 631 in test_logging_rules: get_logger(prepend_test)
 
 ### /root/Complete_Seperate/pure_json_fetch_cache.py
-- Line 86 in _setup_logger: logging.getLogger(pure_json_fetch)
-- Line 107 in _setup_logger: logging.getLogger(fetch_data)
+- Line 86 in _setup_logger: get_logger(pure_json_fetch)
+- Line 107 in _setup_logger: get_logger(fetch_data)
 
 ### /root/Complete_Seperate/merge_logic.py
-- Line 26 in setup_logger: logging.getLogger(merge_logic)
+- Line 26 in setup_logger: get_logger(merge_logic)
 
 ### /root/Complete_Seperate/test_logging_rules.py
-- Line 47 at module level: logging.getLogger(prepend_test)
+- Line 47 at module level: get_logger(prepend_test)
 
 ### /root/Complete_Seperate/Alerts/alerter_main.py
-- Line 87 at module level: logging.getLogger(None)
-- Line 480 in _initialize_alert: logging.getLogger(file_base)
+- Line 87 at module level: get_logger(None)
+- Line 480 in _initialize_alert: get_logger(file_base)
 
 ### /root/Complete_Seperate/Alerts/base_alert.py
-- Line 65 in __init__: logging.getLogger(name)
+- Line 65 in __init__: get_logger(name)
 
 ### /root/Complete_Seperate/tests/test_logging_system.py
-- Line 38 in test_strict_mode_validation: logging.getLogger(unexpected_test_logger)
+- Line 38 in test_strict_mode_validation: get_logger(unexpected_test_logger)
 
 ## Files with Logger Shadowing
 

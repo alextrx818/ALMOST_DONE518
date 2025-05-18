@@ -58,7 +58,7 @@ def print_handler_details(logger_name, logger):
 
 # Print information about the root logger first
 print("===== ROOT LOGGER =====")
-print_handler_details("root", logging.getLogger())
+print_handler_details("root", get_logger())
 
 # Then print details for all named loggers
 print("\n===== NAMED LOGGERS =====")

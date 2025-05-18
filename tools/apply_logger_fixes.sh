@@ -28,8 +28,8 @@ fix_file() {
   # Backup the file
   backup_file "$file"
   
-  # Fix 1: Replace direct logging.getLogger(__name__) with get_logger
-  if grep -q "logging.getLogger(__name__)" "$file"; then
+  # Fix 1: Replace direct get_logger(__name__) with get_logger
+  if grep -q "get_logger(__name__)" "$file"; then
     # Make sure the import is present
     if ! grep -q "from log_config import get_logger" "$file"; then
       # Add import at the top, after other imports
@@ -38,11 +38,11 @@ fix_file() {
     fi
     
     # Replace the direct getLogger call
-    sed -i "s/logging.getLogger(__name__)/get_logger(\"$module_name\")/g" "$file"
-    echo "  - Replaced logging.getLogger(__name__) with get_logger(\"$module_name\")"
+    sed -i "s/get_logger(__name__)/get_logger(\"$module_name\")/g" "$file"
+    echo "  - Replaced get_logger(__name__) with get_logger(\"$module_name\")"
   fi
   
-  # Fix 2: Replace logging.getLogger('summary') with get_summary_logger()
+  # Fix 2: Replace get_logger('summary') with get_summary_logger()
   if grep -q "logging.getLogger.*summary" "$file"; then
     # Make sure the import is present
     if ! grep -q "from log_config import get_summary_logger" "$file"; then
@@ -52,8 +52,8 @@ fix_file() {
     fi
     
     # Replace the direct getLogger call
-    sed -i "s/logging.getLogger(['\"]summary['\"])/get_summary_logger()/g" "$file"
-    echo "  - Replaced logging.getLogger('summary') with get_summary_logger()"
+    sed -i "s/get_logger(['\"]summary['\"])/get_summary_logger()/g" "$file"
+    echo "  - Replaced get_logger('summary') with get_summary_logger()"
   fi
   
   # Fix 3: Fix logger shadowing in run_complete_pipeline

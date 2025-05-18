@@ -115,7 +115,7 @@ Restart the application to restore default timestamp behavior.
 
 - Any custom logging.Formatter(...) instantiations in the codebase automatically inherit this converter.
 - No changes to LOGGING_CONFIG dictionary are required.
-- Ensure log_config.py is imported before any other modules call logging.getLogger() or create handlers.
+- Ensure log_config.py is imported before any other modules call get_logger() or create handlers.
 
 ## 7. Benefits
 

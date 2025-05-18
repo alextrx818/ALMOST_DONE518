@@ -12,5 +12,5 @@ export PATH="$VIRTUAL_ENV/bin:$PATH"
 # line 12-13: Run service wrapper in a loop
 while true; do 
   /root/Complete_Seperate/service_wrapper.sh
-  sleep 60
+  sleep 15
 done

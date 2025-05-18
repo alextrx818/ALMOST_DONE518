@@ -3,7 +3,7 @@
 Logger Refactoring Tool - Fixes non-compliant logger usages across the codebase
 
 This tool applies automated fixes to:
-1. Replace direct logging.getLogger() calls with get_logger()
+1. Replace direct get_logger() calls with get_logger()
 2. Fix logger shadowing issues that cause UnboundLocalError
 3. Standardize custom handler setup
 4. Document all changes in a report
@@ -125,7 +125,7 @@ class LoggerRefactor(ast.NodeTransformer):
                     if 'logger' in self.module_loggers:
                         self.shadowed_loggers.add(target.id)
                         
-                        # Rename to avoid shadowing if assigned logging.getLogger()
+                        # Rename to avoid shadowing if assigned get_logger()
                         if (isinstance(node.value, ast.Call) and 
                             isinstance(node.value.func, ast.Attribute) and
                             isinstance(node.value.func.value, ast.Name) and
@@ -169,7 +169,7 @@ class LoggerRefactor(ast.NodeTransformer):
         
     def visit_Call(self, node):
         """Process function calls to fix logger issues."""
-        # Fix direct logging.getLogger() calls
+        # Fix direct get_logger() calls
         if (isinstance(node.func, ast.Attribute) and
             isinstance(node.func.value, ast.Name) and
             node.func.value.id == 'logging' and 
@@ -234,7 +234,7 @@ class LoggerRefactor(ast.NodeTransformer):
                     self._add_change(
                         node, 
                         'get_logger', 
-                        f'logging.getLogger({logger_name})',
+                        f'get_logger({logger_name})',
                         f'get_logger("{logger_name}")'
                     )
                 

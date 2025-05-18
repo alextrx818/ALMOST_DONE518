@@ -2,7 +2,7 @@
 
 ## UPDATED: 05/17/2025
 
-> 🚨 **CRITICAL UPDATE**: All loggers MUST use the centralized logging system via `get_logger()` or `get_summary_logger()`. Direct calls to `logging.getLogger()` are **STRICTLY PROHIBITED** and will cause logger validation to fail.
+> 🚨 **CRITICAL UPDATE**: All loggers MUST use the centralized logging system via `get_logger()` or `get_summary_logger()`. Direct calls to `get_logger()` are **STRICTLY PROHIBITED** and will cause logger validation to fail.
 
 ## ABSOLUTE GLOBAL RULES
 
@@ -122,6 +122,89 @@ All log timestamps use Eastern Time (America/New_York) and a consistent MM/DD/YY
 
 ### Implementation
 
+This is implemented globally in the `log_config.py` file by setting the timezone for the entire process:
+
+```python
+# Set the timezone globally to Eastern Time (New York)
+os.environ['TZ'] = 'America/New_York'
+time.tzset()  # Apply the timezone setting to the process
+```
+
+Additionally, all formatters use the Eastern Time converter for consistent timezone formatting:
+
+```python
+logging.Formatter.converter = staticmethod(ny_time_converter)
+```
+
+## 5. Global Log Format
+
+All log lines follow a strict canonical format:
+
+```
+%(asctime)s [%(levelname)s] %(name)s: %(message)s
+```
+
+### Example
+
+```
+05/18/2025 01:49:13 AM EDT [INFO] combined_match_summary: Match ID: 6ypq3nh327zpmd7
+```
+
+### Implementation
+
+This standard format is implemented through the `_get_standard_formatter()` function in `log_config.py`:
+
+```python
+def _get_standard_formatter():
+    """Return the standard formatter used throughout the application."""
+    return SingleLineFormatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%m/%d/%Y %I:%M:%S %p %Z"
+    )
+```
+
+All loggers created through `get_logger()` automatically receive this formatter, ensuring consistent formatting across the entire application.
+
+## 6. Mandatory Use of Centralized Logger Factory
+
+⚠️ **CRITICAL RULE**: All code MUST use the centralized logger factory functions to create loggers.
+
+### Required Factory Functions
+
+- Use `get_logger(name)` for standard loggers
+- Use `get_summary_logger()` for the special match summary logger
+
+### Prohibited Practices
+
+❌ Direct calls to `get_logger()` are strictly prohibited
+❌ Direct handler attachment via `.addHandler()` is prohibited
+❌ Creating custom formatters outside of `log_config.py` is prohibited
+
+### Implementation
+
+The centralized logger factory functions ensure that:
+
+1. All loggers have consistent formatting
+2. File handlers use PrependFileHandler for newest-first entries
+3. All timestamps use Eastern Time
+4. Log files are created in the correct directory structure
+5. Handlers are not duplicated
+
+```python
+# CORRECT - Do this
+from log_config import get_logger
+logger = get_logger("my_component")
+logger.info("Processing started")
+
+# WRONG - Never do this
+import logging
+logger = get_logger("my_component")  # Missing standardized configuration
+```
+
+Runtime checks will validate that all loggers conform to these standards. Non-conforming loggers will trigger warnings or errors depending on the severity of the violation.
+
+### Implementation
+
 The timezone is set globally:
 
 ```python
@@ -164,7 +247,7 @@ All logs are configured for automatic daily rotation with 30 days of retention:
 
 ## 7. Using get_logger() for All Loggers
 
-**ALL loggers** in the project **MUST** be created using either `get_logger()` or `get_summary_logger()` from `log_config.py`. Direct calls to `logging.getLogger()` are **strictly prohibited** and will cause validation errors.
+**ALL loggers** in the project **MUST** be created using either `get_logger()` or `get_summary_logger()` from `log_config.py`. Direct calls to `get_logger()` are **strictly prohibited** and will cause validation errors.
 
 ```python
 # CORRECT WAY to get a logger
@@ -182,11 +265,11 @@ summary_logger = get_summary_logger()
 ```python
 # INCORRECT - will cause validation errors
 import logging
-logger = logging.getLogger("my_component")  # VIOLATION!
+logger = get_logger("my_component")  # VIOLATION!
 
 # INCORRECT - local variable shadowing
 def some_function():
-    logger = logging.getLogger("something")  # Creates UnboundLocalError!
+    logger = get_logger("something")  # Creates UnboundLocalError!
 ```
 
 **NEVER add handlers directly** to a logger. All handler configuration must be done in `log_config.py`:
@@ -381,7 +464,7 @@ Run these in your environment to confirm correct behavior:
 Handler & Formatter Check
 
 import logging
-logger = logging.getLogger('summary')
+logger = get_logger('summary')
 print([type(h).__name__ for h in logger.handlers])
 print([h.formatter._fmt for h in logger.handlers])
 

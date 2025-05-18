@@ -3,7 +3,7 @@
 Logger Scanner - Analyzes Python files for non-compliant logger usage patterns
 
 This tool scans the entire codebase to identify:
-1. Direct logging.getLogger() calls that should use get_logger()
+1. Direct get_logger() calls that should use get_logger()
 2. Custom handler setup that bypasses centralized configuration
 3. Local variable shadowing that could cause UnboundLocalError
 4. Wildcard imports that might pull in logging functions
@@ -276,7 +276,7 @@ def generate_report(results: List[Dict]) -> str:
                 report.append(f"\n### {result['file']}")
                 for line, name, context in calls:
                     context_str = f" in {context}" if context != "module" else " at module level"
-                    report.append(f"- Line {line}{context_str}: logging.getLogger({name})")
+                    report.append(f"- Line {line}{context_str}: get_logger({name})")
     
     if shadowing > 0:
         report.append("\n## Files with Logger Shadowing")

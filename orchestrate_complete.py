@@ -117,7 +117,7 @@ import memory_monitor
 import logger_monitor
 
 # Setup logging before other imports to ensure proper configuration
-from log_config import get_logger, validate_logger_configuration, cleanup_handlers, configure_logging
+from log_config import get_logger, validate_logger_configuration, cleanup_handlers, configure_logging, validate_logger_count
 
 # Explicitly configure logging at application startup
 configure_logging()

@@ -17,7 +17,7 @@ This document outlines the sprint planning for completing the logging standardiz
 ### Detailed Tasks
 
 #### S1-01: Standardize logger usage in pure_json_fetch_cache.py
-- Replace direct `logging.getLogger()` calls with centralized `get_logger()`
+- Replace direct `get_logger()` calls with centralized `get_logger()`
 - Remove custom handlers and use centralized configuration
 - Add proper error logging for API failures
 - Lines to modify: 86, 107 (direct calls), 103, 104, 118 (custom handlers)
@@ -46,12 +46,12 @@ This document outlines the sprint planning for completing the logging standardiz
 ### Detailed Tasks
 
 #### S2-01: Standardize logger usage in merge_logic.py
-- Replace direct `logging.getLogger()` call with centralized `get_logger()`
+- Replace direct `get_logger()` call with centralized `get_logger()`
 - Remove custom handlers and use centralized configuration
 - Lines to modify: 26 (direct call), 43, 44 (custom handlers)
 
 #### S2-02: Standardize logger usage in memory_monitor.py
-- Replace direct `logging.getLogger()` call with centralized `get_logger()`
+- Replace direct `get_logger()` call with centralized `get_logger()`
 - Remove custom handlers and use centralized configuration
 - Lines to modify: 32 (direct call), 50, 51 (custom handlers)
 
@@ -81,7 +81,7 @@ This document outlines the sprint planning for completing the logging standardiz
 - Lines to modify: 77, 209
 
 #### S3-02: Standardize logger usage in Alerts modules
-- Replace direct `logging.getLogger()` calls in alerter_main.py and base_alert.py
+- Replace direct `get_logger()` calls in alerter_main.py and base_alert.py
 - Remove custom handler in alerter_main.py
 - Lines to modify: alerter_main.py:87,480,91; base_alert.py:65,76
 

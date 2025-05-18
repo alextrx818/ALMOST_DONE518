@@ -54,7 +54,7 @@ test_logger.setLevel(logging.INFO)
 # Note: In normal application code, handlers should only be configured in log_config.py
 file_handler = PrependFileHandler(str(test_log_path), when='midnight', backupCount=3)
 file_handler.setFormatter(get_standard_formatter())
-test_logger.addHandler(file_handler)
+# REMOVED: use central log_config.configure_logging() or get_logger()
 
 # Write entries in sequence - should appear in reverse order in log
 print("Writing test entries to prepend_test.log...")

@@ -6,19 +6,18 @@ This utility tracks the growth of loggers and handlers over multiple cycles to i
 memory leaks in the logging system.
 """
 
-import logging
+from log_config import configure_logging, get_logger
 import json
 import os
 from pathlib import Path
 import time
 from datetime import datetime
 
-# Configure the monitor's own logger
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+# Ensure central logging is configured before any logger is retrieved
+configure_logging()
+
+# Use the central factory to get your module‐level logger
+logger = get_logger("memory_monitor")
 
 class LoggerMonitor:
     """Tracks logger and handler counts across multiple orchestration cycles."""
@@ -198,7 +197,7 @@ alert_logger = get_logger(self.alert_file_bases[id(alert)])
 
 # Optional: If you need to use a specific formatter for this logger
 # you can still customize it, but the basic handlers are already attached
-alert_logger.handlers[0].setFormatter(logging.Formatter('%(message)s'))
+# REMOVED inline Formatter – use get_standard_formatter()
 
 # Note: No need to manually create and attach handlers - get_logger() does this automatically
 # with standardized formatting and consistent behavior across the application

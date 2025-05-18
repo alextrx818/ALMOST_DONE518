@@ -7,7 +7,7 @@ This document outlines the best practices for logging in the Football Match Trac
 ## Key Principles
 
 1. **Always use the centralized logging system**
-   - Never use direct `logging.getLogger()` calls
+   - Never use direct `get_logger()` calls
    - Always use `get_logger()` or `get_summary_logger()` from `log_config.py`
 
 2. **Avoid logger shadowing**
