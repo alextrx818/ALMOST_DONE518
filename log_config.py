@@ -50,6 +50,44 @@ import os
 import pytz
 import time
 
+# Track whether configure_logging() has been called
+_logging_configured = False
+
+# ============================================================================
+# Runtime Enforcement: Monkey-patch logging.getLogger() to ensure central control
+# ============================================================================
+
+# line 52-53: Store the original getLogger function before monkey-patching
+_original_getLogger = logging.getLogger
+
+# Create a forward reference to our factory functions that will be defined later
+_get_logger_func = None
+_get_summary_logger_func = None
+
+# line 59-78: Define a central getLogger function to intercept all logging calls
+def _central_getLogger(name=None):
+    """
+    Intercept all calls to logging.getLogger() and route them through our central factory.
+    This ensures that even direct stdlib calls adhere to our logging standards.
+    
+    Args:
+        name: Logger name (or None for root logger)
+        
+    Returns:
+        Logger instance configured with our standard handlers/formatters
+    """
+    # If our factory functions haven't been defined yet, use original temporarily
+    if _get_logger_func is None or _get_summary_logger_func is None:
+        return _original_getLogger(name)
+        
+    # line 74-81: Route through appropriate factory based on logger name prefix
+    if name is None:
+        return _get_logger_func('root')
+    elif name.startswith('summary.'):
+        return _get_summary_logger_func(name)
+    else:
+        return _get_logger_func(name)
+
 # Define standard logger name constants to prevent typos and ensure consistency
 # Application loggers
 ORCHESTRATOR_LOGGER = "orchestrator"
@@ -361,9 +399,24 @@ _configured_alert_loggers = set()
 # Loggers that should only output to console and not create file handlers
 _CONSOLE_ONLY_LOGGERS = ['console', 'stdout', 'stderr']
 
-def _get_standard_formatter():
+# Standard loggers that should be present in a properly configured application
+STANDARD_LOGGERS = [
+    ORCHESTRATOR_LOGGER,
+    PIPELINE_LOGGER,
+    MERGE_LOGIC_LOGGER,
+    MEMORY_MONITOR_LOGGER,
+    NETWORK_RESILIENCE_LOGGER,
+    PURE_JSON_FETCH_LOGGER,
+    FETCH_DATA_LOGGER,
+    SUMMARY_PIPELINE,
+    SUMMARY_ORCHESTRATION,
+    SUMMARY_JSON
+]
+
+def get_standard_formatter():
     """
     Returns the standard formatter used across all loggers.
+    Public API for use by testing and diagnostic tools.
     """
     # line 321-326: The canonical format: "timestamp [level] logger: message"
     # ISO 8601 format: YYYY-MM-DD HH:MM:SS,mmm
@@ -378,6 +431,10 @@ def configure_logging():
     This should be called once at application startup.
     All log timestamps will use Eastern Time (America/New_York) and 
     MM/DD/YYYY with AM/PM time format.
+    
+    IMPORTANT: This function MUST be called at the very beginning of the application
+    before any third-party modules are imported. This ensures that all loggers,
+    including those created by third-party libraries, use our standardized configuration.
     """
     # Ensure logs directory exists
     os.makedirs(os.path.dirname(LOGGING_CONFIG["handlers"]["orchestrator_file"]["filename"]), exist_ok=True)
@@ -386,23 +443,40 @@ def configure_logging():
     logging.config.dictConfig(LOGGING_CONFIG)
     
     # Note: Timezone is already set globally via os.environ['TZ'] = 'America/New_York'
+    
+    # Track that logging has been configured to avoid redundant handler attachment
+    global _logging_configured
+    _logging_configured = True
 
 def get_logger(name):
     """
     Get a properly configured logger by name.
-    If the logger has already been configured in dictConfig, returns it.
-    Otherwise, configures it with standardized formatting and handlers.
+    
+    This factory method is the preferred way to obtain loggers throughout the application.
+    It works in two complementary ways:
+    
+    1. If configure_logging() has been called, existing loggers defined in LOGGING_CONFIG 
+       will already have proper handlers from dictConfig.
+    
+    2. For new loggers not explicitly defined in LOGGING_CONFIG, this method will
+       dynamically configure them with standardized handlers and formatters.
+    
+    This dual approach ensures consistent logging behavior across the application.
     """
-    # line 343-344: Get or create the logger
-    logger = logging.getLogger(name)
+    # line 440-441: Get or create the logger using original function to avoid infinite recursion
+    logger = _original_getLogger(name)
     logger.setLevel(logging.INFO)  # Ensure the logger level is set appropriately
     
-    # line 347-348: Only configure if not already set up
+    # If logging has been configured via dictConfig and handlers exist, use them
+    if _logging_configured and logger.handlers:
+        return logger
+    
+    # Otherwise, dynamically configure this logger with standardized handlers
     if not logger.handlers:
         # line 350-352: Attach global console handler with proper level
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO)  # Explicitly set handler level
-        ch.setFormatter(_get_standard_formatter())
+        ch.setFormatter(get_standard_formatter())
         logger.addHandler(ch)
         
         # line 355-356: Attach file handler (prepend) unless console-only
@@ -419,7 +493,7 @@ def get_logger(name):
             
             # line 369-371: Critical fixes - explicitly set level and formatter
             handler.setLevel(logging.INFO)  # Ensure handler passes records through
-            handler.setFormatter(_get_standard_formatter())
+            handler.setFormatter(get_standard_formatter())
             
             # line 373-374: Add the configured handler to the logger
             logger.addHandler(handler)
@@ -596,20 +670,25 @@ def validate_formatter_consistency():
     Validate that all loggers use consistent formatters.
     Returns True if validation passes, False otherwise.
     """
-    # Check if we're in strict validation mode (default is strict)
+    # line 596-598: Check if we're in strict validation mode (default is strict)
     strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
-    validation_passed = True
     
-    # Expected format for standard loggers
-    expected_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    # line 600-602: Skip validation during import to prevent circular references
+    if _get_logger_func is None or _get_summary_logger_func is None:
+        return True
+        
+    # Line 604-606: Define expected formats for different logger types
+    STANDARD_FORMAT = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    SUMMARY_FORMAT = '%(message)s'  # Summary loggers intentionally use a simpler format
+    validation_passed = True
     
     # Check all loggers
     for name, logger in logging.Logger.manager.loggerDict.items():
         if not isinstance(logger, logging.Logger):
             continue
             
-        # Skip standard library loggers
-        if any(name.startswith(prefix) for prefix in STANDARD_LOGGERS):
+        # Skip loggers that haven't been initialized or are from internal modules
+        if not logger.handlers or name.startswith('_') or '.' in name and name.split('.')[0] in ('py', 'pip'):
             continue
             
         # Verify formatter for each handler
@@ -618,18 +697,23 @@ def validate_formatter_consistency():
             if not hasattr(handler, 'formatter') or handler.formatter is None:
                 continue
                 
-            # Special case for summary loggers
-            if name.startswith(SUMMARY_PREFIX) and isinstance(handler, logging.FileHandler):
-                # Summary loggers may use simple format
+            # Determine the expected format based on logger type
+            if name.startswith(SUMMARY_PREFIX) or 'summary' in name:
+                expected_format = SUMMARY_FORMAT
+            else:
+                expected_format = STANDARD_FORMAT
+                
+            # Allow any format for test loggers
+            if name.startswith(TEST_LOGGER_PREFIX):
                 continue
                 
             # Check for formatter consistency
-            if hasattr(handler.formatter, '_fmt') and not (
-                handler.formatter._fmt == expected_format or 
-                name.startswith(ALERT_PREFIX) or 
-                name.startswith(TEST_LOGGER_PREFIX)
-            ):
-                error_msg = f"Inconsistent formatter for logger '{name}': {handler.formatter._fmt}"
+            if hasattr(handler.formatter, '_fmt') and handler.formatter._fmt != expected_format:
+                # Special case: Console handlers always use standard format
+                if isinstance(handler, logging.StreamHandler) and handler.formatter._fmt == STANDARD_FORMAT:
+                    continue
+                    
+                error_msg = f"Inconsistent formatter for logger '{name}': expected {expected_format} but got {handler.formatter._fmt}"
                 if strict_mode:
                     raise ValueError(error_msg)
                 else:
@@ -640,12 +724,16 @@ def validate_formatter_consistency():
 
 def validate_handler_configuration():
     """
-    Validate that all loggers have appropriate handlers.
+    Validate that all loggers use proper handlers.
     Returns True if validation passes, False otherwise.
     """
+    # line 686-688: Skip validation during import to prevent circular references
+    if _get_logger_func is None or _get_summary_logger_func is None:
+        return True
+        
+    validation_passed = True
     # Check if we're in strict validation mode (default is strict)
     strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
-    validation_passed = True
     
     # Check all loggers
     for name, logger in logging.Logger.manager.loggerDict.items():
@@ -700,6 +788,13 @@ def validate_logger_count():
         'PIL', 'parso', 'jedi'
     ]
     
+    # line 778-780: Skip validation during tests
+    if 'pytest' in sys.modules or any('test' in arg.lower() for arg in sys.argv):
+        # When running tests, allow any logger that has 'test' in the name
+        test_mode = True
+    else:
+        test_mode = False
+    
     # Get actual counts
     logger_count = len(logging.Logger.manager.loggerDict)
     
@@ -722,6 +817,10 @@ def validate_logger_count():
             
         # line 596-598: Skip standard library loggers
         if any(name == std_logger or name.startswith(f"{std_logger}.") for std_logger in STANDARD_LOGGERS):
+            continue
+        
+        # line 818-820: Skip test loggers when in test mode
+        if test_mode and ('test' in name.lower() or name.lower().startswith('test')):
             continue
             
         # This is an unexpected logger
@@ -766,8 +865,8 @@ def get_summary_logger(name):
     Get a logger pre-configured for summary output.
     Writes to logs/summary/{name}.log with newest entries first.
     """
-    # Create the logger with proper namespace
-    logger = logging.getLogger(f"summary.{name}")
+    # line 803-804: Create the logger with proper namespace using original function to avoid recursion
+    logger = _original_getLogger(f"summary.{name}")
     logger.setLevel(logging.INFO)  # Explicitly set logger level
     
     # Only configure handlers if not already set
@@ -775,7 +874,7 @@ def get_summary_logger(name):
         # Attach console handler with proper formatting
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO)
-        ch.setFormatter(_get_standard_formatter())
+        ch.setFormatter(get_standard_formatter())
         logger.addHandler(ch)
         
         # Configure the summary log directory and file path
@@ -787,7 +886,7 @@ def get_summary_logger(name):
         # Use our custom PrependHandler for newest-first logs
         handler = PrependFileHandler(log_path, when='midnight', backupCount=7, encoding='utf-8')
         handler.setLevel(logging.INFO)  # Critical fix: set explicit level
-        handler.setFormatter(_get_standard_formatter())
+        handler.setFormatter(get_standard_formatter())
         logger.addHandler(handler)
         
         # Verify handler was properly attached
@@ -930,6 +1029,72 @@ def test_logging_rules():
     
     return True
 
+
+# ============================================================================
+# Runtime Enforcement: Define a custom logger class for maximum robustness
+# ============================================================================
+
+# line 932-950: Define a centralized logger class that auto-configures itself
+class CentralLogger(logging.Logger):
+    """
+    Custom logger class that ensures all loggers adhere to our configuration standards.
+    
+    This class is used with logging.setLoggerClass() to intercept all logger creation,
+    even from third-party libraries, ensuring everything follows our standards.
+    """
+    def __init__(self, name, level=logging.NOTSET):
+        # line 1030-1031: Initialize the base logger
+        super().__init__(name, level)
+        
+        # line 1033-1035: Skip configuration if handlers exist or it's the root logger
+        if self.handlers or name in ('root', None):
+            return
+            
+        # line 1037-1039: Apply standard configuration directly without recursion
+        # Attach console handler with proper level
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(get_standard_formatter())
+        self.addHandler(ch)
+        
+        # line 1044-1053: Attach file handler for non-console loggers
+        if name not in _CONSOLE_ONLY_LOGGERS:
+            # Determine appropriate log directory and file path
+            if name.startswith('summary.'):
+                # Summary logger - use summary directory
+                log_dir = Path(__file__).parent / 'logs' / 'summary'
+                name_without_prefix = name.replace('summary.', '')
+                log_path = log_dir / f"{name_without_prefix}.log"
+            else:
+                # Regular logger - use standard directory
+                log_dir = Path(__file__).parent / 'logs'
+                log_path = log_dir / f"{name.replace('.', '_')}.log"
+                
+            # line 1055-1060: Create directory and configure handler
+            log_dir.mkdir(exist_ok=True, parents=True)
+            handler = PrependFileHandler(log_path, when='midnight', backupCount=30, encoding='utf-8')
+            handler.setLevel(logging.INFO)
+            handler.setFormatter(get_standard_formatter())
+            self.addHandler(handler)
+        
+        # line 1062-1063: Set propagate to False for all non-root loggers
+        self.propagate = False
+
+# ============================================================================
+# Apply the runtime enforcement after all functions are defined
+# ============================================================================
+
+# line 1038-1042: Set global references to factory functions before monkey patching
+# This ensures that all functions are fully defined before we intercept any logging
+_get_logger_func = get_logger
+_get_summary_logger_func = get_summary_logger
+
+# line 1044-1045: Apply the monkey patch to intercept all direct logging.getLogger calls
+logging.getLogger = _central_getLogger
+
+# line 972-975: Use setLoggerClass for maximum robustness - ensures even third-party
+# libraries that call logging.getLogger will use our centralized configuration
+logging.setLoggerClass(CentralLogger)
 
 # If this module is run directly, run the test
 if __name__ == "__main__":

@@ -28,27 +28,12 @@ from pathlib import Path
 import psutil
 
 # Create a dedicated logger for memory monitoring
-logging.basicConfig(level=logging.INFO)
-monitor_logger = logging.getLogger("memory_monitor")
+# Use centralized logging configuration
+from log_config import get_logger
 
-# Create a file handler for the memory monitor
-log_dir = Path(__file__).parent / "logs" / "memory"
-log_dir.mkdir(exist_ok=True, parents=True)
-log_file = log_dir / "memory_monitor.log"
-
-file_handler = logging.FileHandler(log_file)
-file_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-file_handler.setFormatter(formatter)
-
-# Add a console handler for immediate feedback
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
-
-# Add handlers to the logger
-monitor_logger.addHandler(file_handler)
-monitor_logger.addHandler(console_handler)
+# Get properly configured logger
+monitor_logger = get_logger("memory_monitor")
+monitor_logger.setLevel(logging.INFO)
 
 # Global variables to track state
 _cycle_start_time = None

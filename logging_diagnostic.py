@@ -75,13 +75,9 @@ print("\n===== TEST LOG MESSAGES =====")
 test_logger = get_logger("diagnostic_test")
 print(f"Test logger: {test_logger.name}, Level: {logging.getLevelName(test_logger.level)}")
 
-# Add a console handler to ensure we see output
-console = logging.StreamHandler()
-console.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
-                             '%m/%d/%Y %I:%M:%S %p %Z')
-console.setFormatter(formatter)
-test_logger.addHandler(console)
+# Since we're using the central factory, it should already have appropriate handlers
+# But for diagnostic purposes, we'll ensure console output
+test_logger.setLevel(logging.DEBUG)
 
 # Try logging a message
 try:

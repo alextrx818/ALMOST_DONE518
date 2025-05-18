@@ -1,0 +1,23 @@
+#!/bin/bash
+# Pre-commit hook to enforce logging standards
+
+# Ensure the hook is executed from the project root
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# Create diagnostics directory if it doesn't exist
+mkdir -p diagnostics
+
+echo "Running logging standards enforcement checks..."
+
+# Run the enforcement script
+python3 tools/enforce_logging_standards.py
+
+# If the script fails, prevent the commit
+if [ $? -ne 0 ]; then
+    echo "❌ Logging standards violations detected."
+    echo "Please fix the issues above before committing."
+    exit 1
+fi
+
+echo "✅ Logging standards checks passed."
+exit 0

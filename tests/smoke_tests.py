@@ -59,7 +59,8 @@ class FootballTrackingSystemSmokeTests(unittest.TestCase):
         self.assertEqual(test_logger.name, "test_component")
         
         # Test summary logger
-        summary_logger = get_summary_logger()
+        # line 62: Update test to use required name parameter
+        summary_logger = get_summary_logger("smoke_test")
         self.assertEqual(summary_logger.name, "summary")
         
         # Log some test messages

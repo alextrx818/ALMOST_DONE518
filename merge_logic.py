@@ -8,44 +8,12 @@ import pytz
 from pure_json_fetch_cache import extract_ids
 
 # ─── LOGGER SETUP ──────────────────────────────────────────────────────────
-# Custom formatter for standardized timestamp format across all logs
-class StandardTimestampFormatter(logging.Formatter):
-    def formatTime(self, record, datefmt=None):
-        # Always use Eastern time with MM/DD/YYYY II:MM:SS AM/PM EDT format
-        eastern = pytz.timezone('US/Eastern')
-        dt = datetime.fromtimestamp(record.created).astimezone(eastern)
-        return dt.strftime("%m/%d/%Y %I:%M:%S %p %Z")
+# Use centralized logging configuration
+from log_config import get_logger
 
-def setup_logger():
-    # Create logs directory if it doesn't exist
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Main logger
-    log_file = os.path.join(os.path.dirname(__file__), "logs/fetch/merge_logic.log")
-    log = logging.getLogger("merge_logic")
-    log.setLevel(logging.DEBUG)
-    
-    # File handler for all log levels
-    fh = logging.FileHandler(log_file)
-    fh.setLevel(logging.DEBUG)
-    
-    # Console handler for INFO+ levels
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    
-    # Add formatter with [MERGE_LOGIC] prepended to all messages
-    # Use the standardized timestamp formatter for consistent formatting
-    fmt = StandardTimestampFormatter("%(asctime)s %(levelname)s [MERGE_LOGIC] %(message)s")
-    fh.setFormatter(fmt)
-    ch.setFormatter(fmt)
-    
-    log.addHandler(fh)
-    log.addHandler(ch)
-    return log
-
-# Initialize logger
-_log = setup_logger()
+# Initialize logger using the centralized logger factory
+_log = get_logger("merge_logic")
+_log.setLevel(logging.DEBUG)
 
 # ─── HELPERS ────────────────────────────────────────────────────────────────
 def unwrap_results(obj: Dict[str, Any], ctx: str) -> Dict[str, Any]:

@@ -81,41 +81,14 @@ def _setup_logger():
     log_dir = os.path.join(os.path.dirname(__file__), "logs")
     os.makedirs(log_dir, exist_ok=True)
     
-    # Main logger
-    log_file = os.path.join(log_dir, "pure_json_fetch.log")
-    log = logging.getLogger("pure_json_fetch")
+    # Get logger using centralized logger factory
+    from log_config import get_logger
+    log = get_logger("pure_json_fetch")
     log.setLevel(logging.DEBUG)
     
-    # File handler for all log levels
-    fh = logging.FileHandler(log_file)
-    fh.setLevel(logging.DEBUG)
-    
-    # Console handler for INFO+ levels
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    
-    # Add more detailed formatter with [FETCH_CACHE] prepended to all messages
-    # Use the StandardTimestampFormatter for consistent formatting
-    fmt = StandardTimestampFormatter("%(asctime)s %(levelname)s [FETCH_CACHE] %(message)s")
-    fh.setFormatter(fmt)
-    ch.setFormatter(fmt)
-    
-    log.addHandler(fh)
-    log.addHandler(ch)
-    
-    # Create special data logger for detailed fetch logs
-    fetch_logger = logging.getLogger("fetch_data")
+    # Get detailed fetch logger using centralized logger factory
+    fetch_logger = get_logger("fetch_data")
     fetch_logger.setLevel(logging.DEBUG)
-    
-    # Create a separate file for detailed fetch data
-    fetch_log_file = os.path.join(log_dir, "fetch_details.log")
-    fetch_handler = logging.FileHandler(fetch_log_file)
-    fetch_handler.setLevel(logging.DEBUG)
-    
-    # Use the standardized timestamp formatter for fetch details log - with [FETCH_DETAIL] prepended
-    fetch_fmt = StandardTimestampFormatter("%(asctime)s %(levelname)s [FETCH_DETAIL] %(message)s")
-    fetch_handler.setFormatter(fetch_fmt)
-    fetch_logger.addHandler(fetch_handler)
     
     return log, fetch_logger
 

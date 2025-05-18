@@ -191,20 +191,17 @@ def patch_alerter_main():
     """Create code to fix handler accumulation in alerter_main.py"""
     fix_code = """
 # Inside AlerterMain.run() method, replace the alerter_logger creation with:
-alert_logger = logging.getLogger(self.alert_file_bases[id(alert)])
-        
-# Clear existing handlers to prevent accumulation
-while alert_logger.handlers:
-    alert_logger.handlers.pop()
-        
-# Set up handler for this alert
-log_dir = os.path.join(os.path.dirname(__file__), "logs")
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"{self.alert_file_bases[id(alert)]}.log")
-        
-handler = logging.FileHandler(log_file)
-handler.setFormatter(logging.Formatter('%(message)s'))
-alert_logger.addHandler(handler)
+from log_config import get_logger
+
+# Use centralized logger factory to get properly configured logger
+alert_logger = get_logger(self.alert_file_bases[id(alert)])
+
+# Optional: If you need to use a specific formatter for this logger
+# you can still customize it, but the basic handlers are already attached
+alert_logger.handlers[0].setFormatter(logging.Formatter('%(message)s'))
+
+# Note: No need to manually create and attach handlers - get_logger() does this automatically
+# with standardized formatting and consistent behavior across the application
 """
     print(fix_code)
 
