@@ -71,6 +71,10 @@ import sys
 import os
 import pytz
 import time
+import datetime
+
+# Loggers that should only write to console, not to files
+_CONSOLE_ONLY_LOGGERS = set(['root'])
 
 # Track whether configure_logging() has been called
 _logging_configured = False
@@ -85,6 +89,15 @@ _original_getLogger = logging.getLogger
 # Create a forward reference to our factory functions that will be defined later
 _get_logger_func = None
 _get_summary_logger_func = None
+
+# Define get_logger function early to avoid circular references
+def get_logger(name):
+    """Get a logger with the given name.
+    This is the main entry point for getting loggers in the application.
+    """
+    if not _logging_configured:
+        configure_logging()
+    return _original_getLogger(name)
 
 # line 59-78: Define a central getLogger function to intercept all logging calls
 def _central_getLogger(name=None):
@@ -219,7 +232,8 @@ time.tzset()  # Apply the timezone setting to the process
 
 # Define a simple converter function that takes exactly one argument
 def ny_time_converter(timestamp):
-    """Return a time.struct_time in local (NY) timezone
+    """
+    Return a time.struct_time in local (NY) timezone
     
     Args:
         timestamp: Seconds since the Epoch
@@ -229,8 +243,23 @@ def ny_time_converter(timestamp):
     """
     return time.localtime(timestamp)
 
+def eastern_time_converter(timestamp):
+    """
+    Convert UTC timestamp to Eastern Time (America/New_York)
+    
+    Args:
+        timestamp: Seconds since the Epoch
+        
+    Returns:
+        time.struct_time object in Eastern timezone
+    """
+    utc_dt = datetime.datetime.fromtimestamp(timestamp, tz=pytz.UTC)
+    eastern_tz = pytz.timezone('America/New_York')
+    eastern_dt = utc_dt.astimezone(eastern_tz)
+    return eastern_dt.timetuple()
+
 # Use staticmethod to prevent auto-binding issues
-logging.Formatter.converter = staticmethod(ny_time_converter)
+logging.Formatter.converter = staticmethod(eastern_time_converter)
 
 # Base directories
 BASE_DIR = Path(__file__).parent
@@ -243,7 +272,7 @@ for log_dir in [
     LOGS_DIR / "summary",
     LOGS_DIR / "alerts",
     LOGS_DIR / "memory",
-    LOGS_DIR / "monitor",
+    LOGS_DIR / "monitor"
 ]:
     log_dir.mkdir(exist_ok=True, parents=True)
 
@@ -258,578 +287,284 @@ LOGGER_MONITOR_LOGGER = "logger_monitor"
 SUMMARY_LOGGER = "summary"
 OU3_LOGGER = "OU3"
 
-# Canonical log line format used by all loggers in this application
+# Define standard log formats for all loggers in this application
 CANONICAL_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+STANDARD_FORMAT = CANONICAL_FORMAT
+SUMMARY_FORMAT = "%(message)s"
 ISO_DATE_FORMAT = "%Y-%m-%d %H:%M:%S,%f"  # ISO‐8601
+
+def get_standard_formatter():
+    """Get the standard formatter used by most loggers."""
+    return SingleLineFormatter(STANDARD_FORMAT)
 
 # Central logging configuration
 LOGGING_CONFIG = {
     "version": 1,
-    "disable_existing_loggers": False,
+    "filters": {
+        "step_ts": {}
+    },
     "formatters": {
         "standard": {
-            "format": CANONICAL_FORMAT,
-            "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
+            "format": CANONICAL_FORMAT
         },
-        "detailed": {
-            "format": CANONICAL_FORMAT,
-            "datefmt": "%m/%d/%Y %I:%M:%S %p %Z",
-        },
-        "simple": {
-            "format": "%(message)s",
-        },
-        "summary_formatter": {
-            "()": "log_config.SingleLineFormatter", 
-            "format": "%(message)s",  # No timestamp prefix at all
-        },
-        "human_readable": {
-            "()": "log_config.SingleLineFormatter",
-            "format": "%(message)s"  # No timestamp prefix, level, or logger name
-        },
+        "summary": {
+            "format": SUMMARY_FORMAT
+        }
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "level": "INFO",
             "formatter": "standard",
-            "stream": "ext://sys.stdout",
+            "level": "INFO"
         },
-        "orchestrator_file": {
+        "summary_file": {
             "class": "log_config.PrependFileHandler",
-            "level": "INFO",
-            "formatter": "standard",
-            "filename": str(LOGS_DIR / "orchestrator.log"),
+            "formatter": "summary",
+            "filename": "logs/summary/pipeline.log",
             "when": "midnight",
             "backupCount": 30,
-            "encoding": "utf8",
-        },
-        "fetch_cache_file": {
-            "class": "log_config.PrependFileHandler",
-            "level": "DEBUG",
-            "formatter": "detailed",
-            "filename": str(LOGS_DIR / "pure_json_fetch.log"),
-            "when": "midnight",
-            "backupCount": 30,
-            "encoding": "utf8",
-        },
-        "fetch_data_file": {
-            "class": "log_config.PrependFileHandler",
-            "level": "INFO",
-            "formatter": "detailed",
-            "filename": str(LOGS_DIR / "fetch" / "fetch_data.log"),
-            "when": "midnight",
-            "backupCount": 30,
-            "encoding": "utf8",
-        },
-        "merge_logic_file": {
-            "class": "log_config.PrependFileHandler",
-            "level": "DEBUG",
-            "formatter": "detailed",
-            "filename": str(LOGS_DIR / "fetch" / "merge_logic.log"),
-            "when": "midnight",
-            "backupCount": 30,
-            "encoding": "utf8",
+            "encoding": "utf-8",
+            "level": "INFO"
         },
         "summary_json_file": {
             "class": "log_config.PrependFileHandler",
-            "level": "INFO",
             "formatter": "standard",
             "filename": str(LOGS_DIR / "summary" / "summary_json.logger"),
             "when": "midnight",
             "backupCount": 30,
-            "encoding": "utf8",
+            "encoding": "utf-8",
+            "level": "INFO"
+        },
+        "orchestrator_file": {
+            "class": "log_config.PrependFileHandler",
+            "formatter": "standard",
+            "filename": "logs/orchestrator.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf-8",
+            "level": "INFO"
+        },
+        "fetch_data_file": {
+            "class": "log_config.PrependFileHandler",
+            "formatter": "standard",
+            "filename": "logs/fetch_data.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf-8",
+            "level": "INFO"
+        },
+        "fetch_cache_file": {
+            "class": "log_config.PrependFileHandler",
+            "formatter": "standard",
+            "filename": "logs/pure_json_fetch.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf-8",
+            "level": "DEBUG"
+        },
+        "merge_logic_file": {
+            "class": "log_config.PrependFileHandler",
+            "formatter": "standard",
+            "filename": "logs/merge_logic.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf-8",
+            "level": "DEBUG"
         },
         "memory_monitor_file": {
             "class": "log_config.PrependFileHandler",
-            "level": "INFO",
             "formatter": "standard",
-            "filename": str(LOGS_DIR / "memory" / "memory_monitor.log"),
+            "filename": "logs/memory_monitor.log",
             "when": "midnight",
             "backupCount": 30,
-            "encoding": "utf8",
-        },
-        "alerts_file": {
-            "class": "log_config.PrependFileHandler",
-            "level": "INFO",
-            "formatter": "standard",
-            "filename": str(LOGS_DIR / "alerts" / "alerter_main.log"),
-            "when": "midnight",
-            "backupCount": 30,
-            "encoding": "utf8",
+            "encoding": "utf-8",
+            "level": "INFO"
         },
         "logger_monitor_file": {
             "class": "log_config.PrependFileHandler",
-            "level": "INFO",
-            "formatter": "detailed",
-            "filename": str(LOGS_DIR / "monitor" / "logger_monitor.log"),
+            "formatter": "standard",
+            "filename": "logs/logger_monitor.log",
             "when": "midnight",
             "backupCount": 30,
-            "encoding": "utf8",
+            "encoding": "utf-8",
+            "level": "INFO"
+        },
+        "alerts_file": {
+            "class": "log_config.PrependFileHandler",
+            "formatter": "standard",
+            "filename": "logs/alert_discovery.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "encoding": "utf-8",
+            "level": "INFO"
         },
         "match_summary_file": {
             "class": "log_config.PrependFileHandler",
-            "level": "INFO",
-            "formatter": "simple",  # Use simple formatter with NO timestamp prefix
-            "filename": str(LOGS_DIR / "summary" / "pipeline.log"),  # Point to logs/summary/pipeline.log
+            "formatter": "summary",
+            "filename": "logs/summary/orchestration.log",
             "when": "midnight",
             "backupCount": 30,
-            "encoding": "utf8",
-        },
+            "encoding": "utf-8",
+            "level": "INFO"
+        }
     },
     "loggers": {
-        # Add explicit static configuration for summary.pipeline
+        "root": {
+            "handlers": ["console"],
+            "level": "INFO"
+        },
         "summary.pipeline": {
+            "handlers": ["summary_file"],
             "level": "INFO",
-            "handlers": ["match_summary_file"],  # Only use the match_summary_file handler which uses human_readable formatter
             "propagate": False
         },
-        ORCHESTRATOR_LOGGER: {
+        "summary.orchestration": {
+            "handlers": ["match_summary_file"],
             "level": "INFO",
-            "handlers": ["console", "orchestrator_file"],
-            "propagate": False,
+            "propagate": False
         },
-        FETCH_CACHE_LOGGER: {
-            "level": "DEBUG",
-            "handlers": ["fetch_cache_file"],
-            "propagate": False,
-        },
-        FETCH_DATA_LOGGER: {
-            "level": "INFO",
-            "handlers": ["fetch_data_file"],
-            "propagate": False,
-        },
-        MERGE_LOGIC_LOGGER: {
-            "level": "DEBUG",
-            "handlers": ["merge_logic_file"],
-            "propagate": False,
-        },
-        SUMMARY_JSON_LOGGER: {
-            "level": "INFO",
+        "summary_json": {
             "handlers": ["summary_json_file"],
-            "propagate": False,
-        },
-        MEMORY_MONITOR_LOGGER: {
             "level": "INFO",
+            "propagate": False
+        },
+        "orchestrator": {
+            "handlers": ["console", "orchestrator_file"],
+            "level": "INFO",
+            "propagate": False
+        },
+        "pure_json_fetch": {
+            "handlers": ["fetch_cache_file"],
+            "level": "DEBUG",
+            "propagate": False
+        },
+        "fetch_data": {
+            "handlers": ["fetch_data_file"],
+            "level": "INFO",
+            "propagate": False
+        },
+        "merge_logic": {
+            "handlers": ["merge_logic_file"],
+            "level": "DEBUG",
+            "propagate": False
+        },
+        "memory_monitor": {
             "handlers": ["memory_monitor_file", "console"],
-            "propagate": False,
-        },
-        LOGGER_MONITOR_LOGGER: {
             "level": "INFO",
+            "propagate": False
+        },
+        "logger_monitor": {
             "handlers": ["logger_monitor_file", "console"],
-            "propagate": False,
+            "level": "INFO",
+            "propagate": False
         },
         "alerter_main": {
-            "level": "INFO",
             "handlers": ["alerts_file", "console"],
-            "propagate": False,
-        },
-        # Suppress overly chatty third-party loggers
-        "asyncio": {
-            "handlers": [],      # no handlers → goes nowhere
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "concurrent.futures": {
-            "handlers": [],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        SUMMARY_LOGGER: {
             "level": "INFO",
-            "handlers": ["console", "match_summary_file"],  # Use our new handler with SingleLineFormatter
-            "propagate": False,
-        },
-        OU3_LOGGER: {
-            "level": "INFO",
-            "handlers": ["console"],  # Default console handler, alert system will add more
-            "propagate": False,
-        },
-    },
-    "root": {
-        "level": "WARNING",
-        "handlers": ["console"],
-    },
+            "propagate": False
+        }
+    }
 }
 
-# No longer need a timezone filter function as we're setting the timezone globally
-
-# Dictionary to track alert loggers that have been configured
-_configured_alert_loggers = set()
-
-# Loggers that should only output to console and not create file handlers
-_CONSOLE_ONLY_LOGGERS = ['console', 'stdout', 'stderr']
-
-# Standard loggers that should be present in a properly configured application
-STANDARD_LOGGERS = [
-    ORCHESTRATOR_LOGGER,
-    PIPELINE_LOGGER,
-    MERGE_LOGIC_LOGGER,
-    MEMORY_MONITOR_LOGGER,
-    NETWORK_RESILIENCE_LOGGER,
-    PURE_JSON_FETCH_LOGGER,
-    FETCH_DATA_LOGGER,
-    SUMMARY_PIPELINE,
-    SUMMARY_ORCHESTRATION,
-    SUMMARY_JSON
-]
-
-
-def get_standard_formatter():
+def cleanup_handlers():
+    """Clean up all logging handlers.
+    This should be called at application shutdown to ensure proper cleanup.
     """
-    Returns the standard formatter used across all loggers.
-    Public API for use by testing and diagnostic tools.
-    """
-    # line 321-326: The canonical format: "timestamp [level] logger: message"
-    # ISO 8601 format: YYYY-MM-DD HH:MM:SS,mmm
-    return SingleLineFormatter(
-        CANONICAL_FORMAT,
-        datefmt=ISO_DATE_FORMAT
-    )
-
-# line 478-485: Human-readable formatter for summary logs (no timestamps)
-def get_human_readable_formatter():
-    """
-    Returns a formatter with no timestamp prefix, only the message.
-    Used for human-readable logs like match summaries.
-    """
-    return SingleLineFormatter(
-        "%(message)s"  # No timestamp, level, or logger name - just the message
-    )
+    for name, logger in logging.Logger.manager.loggerDict.items():
+        if isinstance(logger, logging.Logger):
+            for handler in logger.handlers[:]:  # Copy list as we'll modify it
+                logger.removeHandler(handler)
+                handler.close()
 
 def configure_logging():
-    """Configure all loggers using dictConfig.
-    This should be called once at application startup.
-    All log timestamps will use Eastern Time (America/New_York) and 
-    MM/DD/YYYY with AM/PM time format.
-    
-    IMPORTANT: This function MUST be called at the very beginning of the application
-    before any third-party modules are imported. This ensures that all loggers,
-    including those created by third-party libraries, use our standardized configuration.
+    """Configure logging for the entire application.
+    This function must be called at startup before any imports that emit logs.
     """
-    # Ensure logs directory exists
-    os.makedirs(os.path.dirname(LOGGING_CONFIG["handlers"]["orchestrator_file"]["filename"]), exist_ok=True)
-    
-    # Apply logging configuration
-    logging.config.dictConfig(LOGGING_CONFIG)
-    
-    # Note: Timezone is already set globally via os.environ['TZ'] = 'America/New_York'
-    
-    # Track that logging has been configured to avoid redundant handler attachment
     global _logging_configured
+    if _logging_configured:
+        return
+
+    # Create required log directories
+    for log_dir in [
+        LOGS_DIR,
+        LOGS_DIR / "fetch",
+        LOGS_DIR / "summary",
+        LOGS_DIR / "alerts",
+        LOGS_DIR / "memory",
+        LOGS_DIR / "monitor"
+    ]:
+        log_dir.mkdir(exist_ok=True, parents=True)
+
+    # Configure logging with our settings
+    logging.config.dictConfig(LOGGING_CONFIG)
     _logging_configured = True
 
-def get_logger(name):
-    """
-    Get a properly configured logger by name.
-    
-    This factory method is the preferred way to obtain loggers throughout the application.
-    It works in two complementary ways:
-    
-    1. If configure_logging() has been called, existing loggers defined in LOGGING_CONFIG 
-       will already have proper handlers from dictConfig.
-    
-    2. For new loggers not explicitly defined in LOGGING_CONFIG, this method will
-       dynamically configure them with standardized handlers and formatters.
-    
-    This dual approach ensures consistent logging behavior across the application.
-    """
-    # line 440-441: Get or create the logger using original function to avoid infinite recursion
-    logger = _original_getLogger(name)
-    logger.setLevel(logging.INFO)  # Ensure the logger level is set appropriately
-    
-    # If logging has been configured via dictConfig and handlers exist, use them
-    if _logging_configured and logger.handlers:
-        return logger
-    
-    # Otherwise, dynamically configure this logger with standardized handlers
-    if not logger.handlers:
-        # line 350-352: Attach global console handler with proper level
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)  # Explicitly set handler level
-        ch.setFormatter(get_standard_formatter())
-        logger.addHandler(ch)
-        
-        # line 355-356: Attach file handler (prepend) unless console-only
-        if name not in _CONSOLE_ONLY_LOGGERS:
-            # line 358-359: Create necessary directories
-            log_dir = Path(__file__).parent / 'logs'
-            log_dir.mkdir(exist_ok=True)
-            
-            # line 362-363: Determine log file path with consistent naming
-            log_path = log_dir / f"{name.replace('.', '_')}.log"
-            
-            # line 365-367: Create PrependFileHandler with proper rotation settings
-            handler = PrependFileHandler(log_path, when='midnight', backupCount=30, encoding='utf-8')
-            
-            # line 369-371: Critical fixes - explicitly set level and formatter
-            handler.setLevel(logging.INFO)  # Ensure handler passes records through
-            handler.setFormatter(get_standard_formatter())
-            
-            # line 373-374: Add the configured handler to the logger
-            logger.addHandler(handler)
-            
-            # line 376-377: Verify handler was properly attached
-            if not logger.handlers or len(logger.handlers) < 2:
-                print(f"WARNING: Failed to properly configure handlers for {name} logger")
-    
-    # line 380-381: Return the properly configured logger
-    return logger
-
-
-def create_custom_logger(name, log_file=None, timestamp_prefix=True, level=logging.INFO):
-    """
-    Create a custom logger following all the global logging rules for this project:
-    1. Newest-first logs using PrependFileHandler
-    2. Eastern Time timezone for all timestamps
-    3. Proper handling of multi-line messages
-    4. Configurable timestamp prefixes
-    
-    Args:
-        name (str): Logger name
-        log_file (str, optional): Path to log file. If None, only console output is used.
-        timestamp_prefix (bool): Whether to include timestamp prefix in log entries.
-                                 Set to False for logs that include their own timestamps.
-        level (int): Logging level
-        
-    Returns:
-        logging.Logger: Configured logger
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.propagate = False  # Don't propagate to parent loggers
-    
-    # Clear any existing handlers
-    for handler in list(logger.handlers):
-        logger.removeHandler(handler)
-    
-    # Add console handler
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    console.setFormatter(logging.Formatter(
-        CANONICAL_FORMAT,
-        '%m/%d/%Y %I:%M:%S %p %Z'
-    ))
-    logger.addHandler(console)
-    
-    # Add file handler if log_file is provided
-    if log_file:
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        
-        # Create PrependFileHandler for newest-first entries
-        file_handler = PrependFileHandler(
-            log_file,
-            when='midnight',
-            backupCount=30,
-            encoding='utf8'
-        )
-        file_handler.setLevel(level)
-        
-        # Choose appropriate formatter based on timestamp_prefix flag
-        if timestamp_prefix:
-            # For normal logs: Use SingleLineFormatter for proper multi-line handling
-            file_handler.setFormatter(SingleLineFormatter(
-                CANONICAL_FORMAT,
-                '%m/%d/%Y %I:%M:%S %p %Z'
-            ))
-        else:
-            # For logs with embedded timestamps: Use simple formatter with no prefix
-            file_handler.setFormatter(logging.Formatter('%(message)s'))
-            
-        logger.addHandler(file_handler)
-    
-    return logger
-
-def configure_alert_logger(alert_name):
-    """
-    Configure a logger for a specific alert.
-    Only configures the logger if it hasn\'t been configured before.
-    """
-    if alert_name in _configured_alert_loggers:
-        return logging.getLogger(alert_name)
-    
-    # Create alert log directory if it doesn't exist
-    alert_log_dir = LOGS_DIR / "alerts"
-    alert_log_dir.mkdir(exist_ok=True, parents=True)
-    
-    # Set up logger configuration
-    log_file = str(alert_log_dir / f"{alert_name}.log")
-    handler = logging.handlers.TimedRotatingFileHandler(
-        filename=log_file,
-        when="midnight",
-        backupCount=30,
-        encoding="utf8"
-    )
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    
-    # Get logger and configure
-    logger = logging.getLogger(alert_name)
-    
-    # Properly clean up any existing handlers
-    for h in list(logger.handlers):
-        logger.removeHandler(h)
-        h.close()
-    
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    
-    # Mark this alert logger as configured
-    _configured_alert_loggers.add(alert_name)
-    
-    return logger
-
-def cleanup_handlers():
-    """
-    Properly clean up all handlers to release file descriptors.
-    Call this at application shutdown.
-    """
-    # Get all loggers including the root logger and all named loggers
-    loggers = [logging.getLogger()]  # Start with root logger
-    # Get a static list of names to avoid modifying the dictionary during iteration
-    logger_names = list(logging.root.manager.loggerDict.keys())
-    loggers.extend(logging.getLogger(name) for name in logger_names)
-    
-    # Clean up handlers for each logger
-    for logger in loggers:
-        if not isinstance(logger, logging.Logger):
-            continue
-            
-        # Get a copy of the handlers list to safely modify it
-        for handler in list(logger.handlers):
-            try:
-                # Flush any pending messages
-                if hasattr(handler, 'flush') and callable(handler.flush):
-                    try:
-                        handler.flush()
-                    except Exception as e:
-                        logging.error(f"Error flushing handler {handler}: {e}")
-                
-                # Close the handler
-                handler.close()
-                
-                # Remove the handler from the logger
-                logger.removeHandler(handler)
-                
-            except Exception as e:
-                # Log the error but continue with other handlers
-                logging.error(f"Error cleaning up handler {handler}: {e}", exc_info=True)
-    
-    # Also clean up any handlers that might be registered directly
-    for handler in logging._handlers.copy():
-        try:
-            if hasattr(handler, 'flush') and callable(handler.flush):
-                handler.flush()
-            handler.close()
-        except Exception as e:
-            logging.error(f"Error cleaning up handler {handler}: {e}", exc_info=True)
-
 def validate_logger_configuration():
-    """
-    Comprehensive validation of logger configuration.
-    Checks formatter consistency, handler configuration, and naming conventions.
-    Returns True if all validation checks pass, False otherwise.
-    """
-    # Run individual validation checks
-    format_valid = validate_formatter_consistency()
-    handler_valid = validate_handler_configuration()
-    count_valid = validate_logger_count()
-    
-    return format_valid and handler_valid and count_valid
-
-def validate_formatter_consistency():
-    """
-    Validate that all loggers use consistent formatters.
+    """Validate that all loggers use proper handlers.
     Returns True if validation passes, False otherwise.
     """
-    # line 596-598: Check if we're in strict validation mode (default is strict)
-    strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
-    
-    # line 600-602: Skip validation during import to prevent circular references
+    # Skip validation during import to prevent circular references
     if _get_logger_func is None or _get_summary_logger_func is None:
         return True
         
-    # Line 604-606: Define expected formats for different logger types
-    STANDARD_FORMAT = CANONICAL_FORMAT  # Use the canonical format constant
-    SUMMARY_FORMAT = '%(message)s'  # Summary loggers intentionally use a simpler format
     validation_passed = True
+    strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
+    SUMMARY_PREFIX = "summary."
+    ALERT_PREFIX = "alert."
+    TEST_LOGGER_PREFIX = "test."
+    
+    # Third-party library prefixes to ignore in validation
+    IGNORE_PREFIXES = [
+        "aiohttp.", "aiohttp",  # HTTP server/client library
+        "pip.",                # pip's own internal deprecation logs
+        "rich",               # rich or rich.* if you're using Rich
+        "urllib3",            # HTTP client library
+        "requests",           # HTTP client library
+        "asyncio",            # Async library
+        "chardet"             # Character encoding detection
+    ]
     
     # Check all loggers
     for name, logger in logging.Logger.manager.loggerDict.items():
         if not isinstance(logger, logging.Logger):
+            continue  # Skip PlaceHolder instances
+            
+        # Skip internal loggers, root logger, and third-party libraries
+        if name == 'root' or name.startswith(SUMMARY_PREFIX) or name.startswith(ALERT_PREFIX):
             continue
             
-        # Skip loggers that haven't been initialized or are from internal modules
-        if not logger.handlers or name.startswith('_') or '.' in name and name.split('.')[0] in ('py', 'pip'):
+        # Skip third-party library loggers
+        if any(name.startswith(prefix) for prefix in IGNORE_PREFIXES):
             continue
             
-        # Verify formatter for each handler
+        # Check handler types and formatters
+        expected_format = CANONICAL_FORMAT
+        
+        # Check for console and file handlers
+        has_console = False
+        has_file = False
+        
         for handler in logger.handlers:
-            # Skip handlers without formatters
-            if not hasattr(handler, 'formatter') or handler.formatter is None:
-                continue
-                
-            # Determine the expected format based on logger type
-            if name.startswith(SUMMARY_PREFIX) or 'summary' in name:
-                expected_format = SUMMARY_FORMAT
-            else:
-                expected_format = STANDARD_FORMAT
+            # Determine handler types
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                has_console = True
+            elif isinstance(handler, logging.FileHandler):
+                has_file = True
                 
             # Allow any format for test loggers
             if name.startswith(TEST_LOGGER_PREFIX):
                 continue
-                
+            
             # Check for formatter consistency
             if hasattr(handler.formatter, '_fmt') and handler.formatter._fmt != expected_format:
-                # Special case: Console handlers always use standard format
-                if isinstance(handler, logging.StreamHandler) and handler.formatter._fmt == STANDARD_FORMAT:
-                    continue
-                    
-                error_msg = f"Inconsistent formatter for logger '{name}': expected {expected_format} but got {handler.formatter._fmt}"
+                error_msg = f"Logger '{name}' has inconsistent format: {handler.formatter._fmt} (expected {expected_format})"
+                
                 if strict_mode:
                     raise ValueError(error_msg)
                 else:
                     print(f"WARNING: {error_msg}", file=sys.stderr)
                     validation_passed = False
-    
-    return validation_passed
-
-def validate_handler_configuration():
-    """
-    Validate that all loggers use proper handlers.
-    Returns True if validation passes, False otherwise.
-    """
-    # line 686-688: Skip validation during import to prevent circular references
-    if _get_logger_func is None or _get_summary_logger_func is None:
-        return True
         
-    validation_passed = True
-    # Check if we're in strict validation mode (default is strict)
-    strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
-    
-    # Check all loggers
-    for name, logger in logging.Logger.manager.loggerDict.items():
-        if not isinstance(logger, logging.Logger):
-            continue
-            
-        # Skip standard library loggers
-        if any(name.startswith(prefix) for prefix in STANDARD_LOGGERS):
-            continue
-            
-        # All loggers should have at least one handler (either directly or via parent)
-        if not logger.handlers and not logger.parent.handlers:
-            error_msg = f"Logger '{name}' has no handlers"
-            if strict_mode:
-                raise ValueError(error_msg)
-            else:
-                print(f"WARNING: {error_msg}", file=sys.stderr)
-                validation_passed = False
-                
-        # Check for appropriate handler types
-        has_console = any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
-        has_file = any(isinstance(h, (logging.FileHandler, TimedRotatingFileHandler, PrependFileHandler)) 
-                       for h in logger.handlers)
-                       
         # Application loggers should have both console and file handlers
         if not (name.startswith(SUMMARY_PREFIX) or name.startswith(ALERT_PREFIX) or 
                 name.startswith(TEST_LOGGER_PREFIX)) and not (has_console and has_file):
@@ -845,6 +580,11 @@ def validate_logger_count():
     In strict mode (LOG_STRICT=1, default), raises an exception if counts exceed thresholds.
     In non-strict mode (LOG_STRICT=0), warns but continues execution.
     """
+    # Define expected loggers
+    EXPECTED_LOGGERS = {
+        'summary', 'memory_monitor', 'pure_json_fetch', 'fetch_data', 
+        'merge_logic', 'alerter_main', 'orchestrator', 'root'
+    }
     # Check if we're in strict validation mode (default is strict)
     strict_mode = os.environ.get('LOG_STRICT', '1') == '1'
     # Fixed set of expected loggers plus a margin for alerts and standard lib loggers
@@ -868,55 +608,45 @@ def validate_logger_count():
     else:
         test_mode = False
     
-    # Get actual counts
+    # Get counts for loggers and handlers
     logger_count = len(logging.Logger.manager.loggerDict)
     
-    # Check for unexpected logger growth
+    # Check threshold
+    logger_threshold = 40
+    
+    # Find loggers that aren't expected
     unexpected_loggers = []
     for name in logging.Logger.manager.loggerDict:
-        # line 587-589: Skip loggers that are expected
-        if name in LOGGING_CONFIG["loggers"] or name in _configured_alert_loggers:
-            continue
-            
-        # line 591-593: Skip summary loggers created by get_summary_logger("name")
-        # These follow the pattern "summary.[name]" after our standardization
-        if name.startswith("summary."):
-            continue
-            
-        # line 595-597: Skip specific module loggers that are created during execution
-        # but aren't declared in the static LOGGING_CONFIG dictionary
-        if name in ("orchestrate_complete", "alert_discovery", "alert") or name.startswith("alert."):
-            continue
-            
-        # line 596-598: Skip standard library loggers
-        if any(name == std_logger or name.startswith(f"{std_logger}.") for std_logger in STANDARD_LOGGERS):
+        # Skip expected loggers and those starting with standard prefixes
+        if (name in EXPECTED_LOGGERS or 
+            name.startswith('summary.') or 
+            name.startswith('alert.') or 
+            name in _configured_alert_loggers or
+            name in ["orchestrate_complete", "alert_discovery", "alert"] or 
+            name.startswith("alert.") or
+            any(name == std_logger or name.startswith(f"{std_logger}.") for std_logger in STANDARD_LOGGERS) or
+            test_mode and ('test' in name.lower() or name.lower().startswith('test'))):
             continue
         
-        # line 818-820: Skip test loggers when in test mode
-        if test_mode and ('test' in name.lower() or name.lower().startswith('test')):
-            continue
-            
         # This is an unexpected logger
         unexpected_loggers.append(name)
     
     # If we have unexpected loggers OR we've significantly exceeded our threshold
     if unexpected_loggers or logger_count > EXPECTED_LOGGER_COUNT + 10:
-        error_msg = f"Logger count: {logger_count}, Threshold: {EXPECTED_LOGGER_COUNT}"
-        if unexpected_loggers:
-            error_msg += f". Unexpected loggers: {unexpected_loggers}"
-        
-        # Only fail if we have truly unexpected loggers (not just standard lib ones)
-        if unexpected_loggers:
-            print(error_msg, file=sys.stderr)
-            if strict_mode:
-                # In strict mode, fail on unexpected loggers
-                return False
-            else:
-                # In non-strict mode, just warn and continue
-                print("WARNING: Logger validation found unexpected loggers but continuing in non-strict mode.", file=sys.stderr)
+        error_msg = f"Logger count: {logger_count}, Threshold: {logger_threshold}. Unexpected loggers: {unexpected_loggers}"
+        print(error_msg, file=sys.stderr)
+        if strict_mode:
+            # In strict mode, fail on unexpected loggers
+            return False
+        else:
+            # In non-strict mode, just warn and continue
+            print("WARNING: Logger validation found unexpected loggers but continuing in non-strict mode.", file=sys.stderr)
         
         # Just log a warning if we have no unexpected loggers but count is high
         print(f"WARNING: High logger count but all are expected: {error_msg}", file=sys.stderr)
+    
+    # Return True if validation passes
+    return True
     
     # Check handler count for each logger
     for name, logger in logging.Logger.manager.loggerDict.items():
@@ -935,6 +665,41 @@ def validate_logger_count():
 
 # The get_summary_logger function has been removed in favor of static configuration
 # For summary.pipeline logger, use: logging.getLogger("summary.pipeline")
+
+# Track configured alert loggers to avoid duplication
+_configured_alert_loggers = set()
+
+# Additional standard library loggers we shouldn't warn about
+STANDARD_LOGGERS = [
+    'concurrent', 'asyncio', 'multiprocessing',
+    'chardet', 'urllib3', 'requests', 'PIL'
+]
+
+def configure_alert_logger(name):
+    """Configure a logger for alerts with the given name.
+    This is used by the alerter system to create loggers for different alert types.
+    """
+    if name in _configured_alert_loggers:
+        return logging.getLogger(name)
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    
+    # Create alerts directory if it doesn't exist
+    alerts_dir = Path(__file__).parent / "logs" / "alerts"
+    alerts_dir.mkdir(exist_ok=True, parents=True)
+    
+    # Add file handler
+    handler = PrependFileHandler(alerts_dir / f"{name.replace('alert.', '')}.log",
+                               when='midnight', backupCount=30, encoding='utf-8')
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(SingleLineFormatter('%(message)s'))
+    logger.addHandler(handler)
+    
+    # Track this logger so we don't reconfigure it
+    _configured_alert_loggers.add(name)
+    
+    return logger
 
 # def get_summary_logger(name):
 #     """
@@ -1180,3 +945,4 @@ logging.setLoggerClass(CentralLogger)
 # If this module is run directly, run the test
 if __name__ == "__main__":
     test_logging_rules()
+

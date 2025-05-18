@@ -101,9 +101,16 @@ import logging
 import os
 import psutil
 import pytz
+
+def get_eastern_timestamp():
+    """Generate an Eastern Time timestamp for log messages."""
+    from datetime import datetime
+    return datetime.now(pytz.timezone("America/New_York")).strftime("%m/%d/%Y %I:%M:%S %p %Z")
+
 import signal
 import subprocess
 import sys
+import datetime
 import time
 import traceback
 from contextlib import contextmanager
@@ -320,12 +327,12 @@ async def run_complete_pipeline():
         with Timer("JSON fetch"):
             # line 311: Updated to use required name parameter
             summary_logger = logging.getLogger("summary.pipeline")
-            summary_logger.info("STEP 1: JSON fetch")
+            summary_logger.info(f"STEP 1: JSON fetch: {get_eastern_timestamp()}")
             match_ids = await pure_json_fetch_cache.main()
         
         # STEP 2: Process and merge data
         with Timer("Merge and enrichment"):
-            summary_logger.info("STEP 2: Merge and enrichment")
+            summary_logger.info(f"STEP 2: Merge and enrichment: {get_eastern_timestamp()}")
             # Test error handling by forcing a file not found error
             test_error_handling = False  # Set to True to test error handling
             if test_error_handling:
@@ -403,7 +410,7 @@ async def run_complete_pipeline():
         
         # Final stats
         total_time = time.time() - start_time
-        summary_logger.info(f"✅ Pipeline completed in {total_time:.2f} seconds")
+        summary_logger.info(f"✅ Pipeline completed in {total_time:.2f} seconds: {get_eastern_timestamp()}")
         
         # Dump garbage collection stats
         memory_monitor.dump_gc_stats()
